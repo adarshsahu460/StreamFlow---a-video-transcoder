@@ -8,7 +8,6 @@ const s3Client = new S3Client({ region: process.env.AWS_REGION });
 const SOURCE_BUCKET = process.env.SOURCE_BUCKET; 
 const DESTINATION_BUCKET = process.env.DESTINATION_BUCKET; 
 const VIDEO_KEY = process.env.VIDEO_KEY;
-const WATERMARK_KEY = process.env.WATERMARK_KEY; 
 
 const RESOLUTIONS = [
     { name: '360p', width: 640, height: 360, bv: '800k', ba: '96k' },
@@ -17,7 +16,6 @@ const RESOLUTIONS = [
 ];
 
 const LOCAL_SOURCE_VIDEO = path.resolve('./source.mp4');
-const LOCAL_WATERMARK = path.resolve('./logo.png');
 const LOCAL_OUTPUT_DIR = path.resolve('./output');
 
 async function main() {
@@ -29,8 +27,7 @@ async function main() {
         await fs.mkdir(LOCAL_OUTPUT_DIR, { recursive: true });
         
         await downloadFile(SOURCE_BUCKET, VIDEO_KEY, LOCAL_SOURCE_VIDEO);
-        await downloadFile(SOURCE_BUCKET, WATERMARK_KEY, LOCAL_WATERMARK);
-        console.log('✅ Source files downloaded.');
+        console.log('✅ Source file downloaded.');
 
         const hlsPromises = RESOLUTIONS.map(res => 
             transcodeToHLS(res, LOCAL_OUTPUT_DIR)
@@ -58,7 +55,6 @@ async function main() {
         console.log('🧹 Cleaning up local files...');
         await fs.rm(LOCAL_OUTPUT_DIR, { recursive: true, force: true });
         await fs.rm(LOCAL_SOURCE_VIDEO, { force: true });
-        await fs.rm(LOCAL_WATERMARK, { force: true });
     }
 }
 
@@ -77,8 +73,7 @@ function transcodeToHLS(resolution, outputDir) {
 
         ffmpeg()
             .input(LOCAL_SOURCE_VIDEO)
-            .input(LOCAL_WATERMARK)
-            .complexFilter(`[0:v]scale=${resolution.width}:${resolution.height}[bg];[bg][1:v]overlay=W-w-10:10`)
+            .videoFilter(`scale=${resolution.width}:${resolution.height}`)
             .videoCodec('libx264')
             .audioCodec('aac')
             .addOption('-b:v', resolution.bv)
@@ -133,11 +128,7 @@ async function generateSpriteSheet(outputDir) {
     await new Promise((resolve, reject) => {
         ffmpeg()
             .input(LOCAL_SOURCE_VIDEO)
-            .input(LOCAL_WATERMARK)
-            .complexFilter([
-                '[0:v][1:v]overlay=W-w-10:10[watermarked]',
-                `[watermarked]fps=1/${intervalInSeconds},scale=${thumbnailWidth}:-1,tile=${gridLayout}` 
-            ])
+            .videoFilter(`fps=1/${intervalInSeconds},scale=${thumbnailWidth}:-1,tile=${gridLayout}`)
             .addOption('-an') 
             .on('error', (err) => reject(new Error(`Sprite generation error: ${err.message}`)))
             .on('end', () => resolve())

@@ -1,7 +1,5 @@
 import { SQSClient, ReceiveMessageCommand, DeleteMessageCommand } from "@aws-sdk/client-sqs";
 import { ECSClient, RunTaskCommand } from '@aws-sdk/client-ecs';
-import { DynamoDBClient, GetItemCommand } from "@aws-sdk/client-dynamodb";
-import { unmarshall } from "@aws-sdk/util-dynamodb";
 import type { S3Event } from 'aws-lambda';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -23,45 +21,13 @@ const ecsClient = new ECSClient({
     }
 });
 
-const dynamoDBClient = new DynamoDBClient({
-    region: process.env.AWS_REGION as string,
-    credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY as string,
-        secretAccessKey: process.env.AWS_SECRET_KEY as string
-    }
-});
-
 const SQS_QUEUE_URL = process.env.SQS_QUEUE_URL;
 const DESTINATION_BUCKET = process.env.DESTINATION_BUCKET;
-const DYNAMODB_TABLE = process.env.DYNAMODB_WATERMARK_TABLE;
 const FILENAME_SEPARATOR = '###';
 
-if (!DESTINATION_BUCKET || !DYNAMODB_TABLE) {
-    console.error("FATAL: DESTINATION_BUCKET and DYNAMODB_WATERMARK_TABLE must be set in your .env file.");
+if (!DESTINATION_BUCKET) {
+    console.error("FATAL: DESTINATION_BUCKET must be set in your .env file.");
     process.exit(1);
-}
-
-async function getWatermarkKeyForUser(username: string): Promise<string | null> {
-    console.log(`Querying DynamoDB for watermark key for user: ${username}`);
-    const command = new GetItemCommand({
-        TableName: DYNAMODB_TABLE,
-        Key: {
-            username: { S: username }
-        }
-    });
-
-    try {
-        const result = await dynamoDBClient.send(command);
-        if (!result.Item) {
-            console.warn(`No watermark entry found for user: ${username}`);
-            return null;
-        }
-        const item = unmarshall(result.Item);
-        return item.watermark_key || null;
-    } catch (error) {
-        console.error(`DynamoDB query failed for user ${username}:`, error);
-        return null;
-    }
 }
 
 
@@ -107,16 +73,7 @@ async function init() {
                         continue;
                     }
 
-                    const [username] = filename.split(FILENAME_SEPARATOR);
-                    const watermarkKey = await getWatermarkKeyForUser(username);
-
-                    if (!watermarkKey) {
-                        console.error(`Could not retrieve watermark for user "${username}". The video processing will be skipped. Deleting message.`);
-                        await deleteMessage(receiptHandle);
-                        continue;
-                    }
-
-                    console.log(`Found watermark key "${watermarkKey}" for user "${username}". Starting ECS task.`);
+                    console.log(`Starting ECS task for ${videoKey}`);
 
                     const taskDefinition = process.env.TASK_DEFINITION;
                     const containerName = process.env.CONTAINER_NAME;
@@ -144,7 +101,6 @@ async function init() {
                                     { name: "SOURCE_BUCKET", value: sourceBucket },
                                     { name: "DESTINATION_BUCKET", value: DESTINATION_BUCKET! },
                                     { name: "VIDEO_KEY", value: videoKey },
-                                    { name: "WATERMARK_KEY", value: watermarkKey }, 
                                 ]
                             }]
                         }
