@@ -101,7 +101,6 @@ async function init() {
                     const sourceBucket = record.s3.bucket.name;
                     const videoKey = decodeURIComponent(record.s3.object.key.replace(/\+/g, ' '));
                     const filename = path.basename(videoKey);
-
                     if (!filename.includes(FILENAME_SEPARATOR)) {
                         console.error(`Invalid filename format: "${filename}". Expected 'username###video-name'. Deleting message.`);
                         await deleteMessage(receiptHandle);
@@ -121,7 +120,7 @@ async function init() {
 
                     const taskDefinition = process.env.TASK_DEFINITION;
                     const containerName = process.env.CONTAINER_NAME;
-                    const cluster = process.env.CLUSTER_NAME;
+                    const cluster = process.env.CLUSTER_NAME;   
 
                     const runTaskCommand = new RunTaskCommand({
                         taskDefinition,
@@ -130,11 +129,11 @@ async function init() {
                         networkConfiguration: {
                             awsvpcConfiguration: {
                                 assignPublicIp: 'ENABLED',
-                                securityGroups: ['sg-02d2527695ae0fc94'],
+                                securityGroups: ['sg-07225aa3caaa88140'],
                                 subnets: [
-                                    'subnet-06cf8f4515924b4a9',
-                                    'subnet-0a6d2879683244fbe',
-                                    'subnet-0a3600175d19fa23f'
+                                    'subnet-03488bb14986cec1a',
+                                    'subnet-0966454fe401d47f9',
+                                    'subnet-0cb3d8d27f784aee2'
                                 ]
                             }
                         },
@@ -153,11 +152,10 @@ async function init() {
 
                     await ecsClient.send(runTaskCommand);
                     console.log(`✅ ECS Task started for ${videoKey}`);
-
                     await deleteMessage(receiptHandle);
                 }
             }
-        } catch (err) {
+        }catch (err) {
             console.error("An error occurred in the main loop:", err);
             await new Promise(resolve => setTimeout(resolve, 5000));
         }

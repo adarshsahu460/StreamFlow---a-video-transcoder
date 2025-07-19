@@ -3,8 +3,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createReadStream } = require('node:fs');
 const ffmpeg = require('fluent-ffmpeg');
-const s3Client = new S3Client({ region: process.env.AWS_REGION });
 
+const s3Client = new S3Client({ region: process.env.AWS_REGION });
 const SOURCE_BUCKET = process.env.SOURCE_BUCKET; 
 const DESTINATION_BUCKET = process.env.DESTINATION_BUCKET; 
 const VIDEO_KEY = process.env.VIDEO_KEY;
