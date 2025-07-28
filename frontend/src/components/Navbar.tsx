@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import UploadForm from './UploadForm'
 
 const Navbar = () => {
   return (
@@ -11,6 +12,10 @@ const Navbar = () => {
             </svg>
             <span className="font-bold text-xl text-primary-800">StreamFlow</span>
           </Link>
+          
+          <div>
+            <UploadForm onUploadComplete={() => window.location.reload()} />
+          </div>
         </div>
       </div>
     </nav>

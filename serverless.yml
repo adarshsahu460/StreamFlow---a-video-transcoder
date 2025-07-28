@@ -8,6 +8,7 @@ provider:
   environment:
     VIDEO_TABLE_NAME: VideoMetadata
     DESTINATION_BUCKET: ${self:custom.destinationBucket}
+    SOURCE_BUCKET: ${self:custom.sourceBucket}
     TASK_DEFINITION: ${self:custom.taskDefinition}
     CONTAINER_NAME: video-transcoder
     CLUSTER_NAME: ${self:custom.clusterName}
@@ -22,6 +23,13 @@ provider:
             - dynamodb:PutItem
             - dynamodb:UpdateItem
           Resource: !GetAtt VideoMetadataTable.Arn
+        - Effect: Allow
+          Action:
+            - s3:PutObject
+            - s3:GetObject
+          Resource: 
+            - arn:aws:s3:::${self:custom.sourceBucket}/*
+            - arn:aws:s3:::${self:custom.destinationBucket}/*
         - Effect: Allow
           Action:
             - sqs:ReceiveMessage
@@ -39,6 +47,7 @@ provider:
 
 custom:
   destinationBucket: ${opt:bucket, 'your-destination-bucket'}
+  sourceBucket: ${opt:sourceBucket, 'your-source-bucket'}
   taskDefinition: video-transcoder
   taskDefinitionArn: arn:aws:ecs:${self:provider.region}:${aws:accountId}:task-definition/${self:custom.taskDefinition}
   clusterName: video-transcoder-cluster
@@ -65,6 +74,14 @@ functions:
       - http:
           path: videos/{id}
           method: get
+          cors: true
+  
+  getUploadUrl:
+    handler: api/dist/index.getUploadUrl
+    events:
+      - http:
+          path: videos/upload
+          method: post
           cors: true
 
 resources:

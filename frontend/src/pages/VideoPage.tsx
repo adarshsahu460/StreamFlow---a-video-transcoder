@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import VideoPlayer from '../components/VideoPlayer'
+import ShareButton from '../components/ShareButton'
 import { fetchVideo, Video } from '../api'
 
 const VideoPage = () => {
@@ -8,6 +9,7 @@ const VideoPage = () => {
   const [video, setVideo] = useState<Video | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const navigate = useNavigate()
   
   useEffect(() => {
     const loadVideo = async () => {
@@ -27,12 +29,42 @@ const VideoPage = () => {
     }
     
     loadVideo()
-  }, [id])
+    
+    // If video is still processing, refresh the page every 10 seconds
+    let refreshInterval: ReturnType<typeof setInterval> | null = null;
+    
+    if (video?.status !== 'COMPLETED') {
+      refreshInterval = setInterval(loadVideo, 10000);
+    }
+    
+    return () => {
+      if (refreshInterval) clearInterval(refreshInterval);
+    };
+  }, [id, video?.status])
   
   // Generate thumbnails URL from playback URL
   const getThumbnailsUrl = (playbackUrl: string) => {
     return playbackUrl.replace('master.m3u8', 'thumbnails.vtt')
   }
+  
+  // Check if video is still processing
+  const isProcessing = video && video.status !== 'COMPLETED';
+  
+  // Get status message based on video status
+  const getStatusMessage = () => {
+    if (!video) return '';
+    
+    switch (video.status) {
+      case 'PENDING':
+        return 'Your video is queued for processing.';
+      case 'PROCESSING':
+        return 'Your video is currently being processed.';
+      case 'FAILED':
+        return 'There was an error processing your video.';
+      default:
+        return `Status: ${video.status}`;
+    }
+  };
   
   return (
     <div>
@@ -66,15 +98,42 @@ const VideoPage = () => {
       
       {video && (
         <div>
-          <div className="bg-black rounded-lg overflow-hidden mb-6">
-            <VideoPlayer 
-              playbackUrl={video.playbackUrl}
-              thumbnailsUrl={getThumbnailsUrl(video.playbackUrl)}
-            />
-          </div>
+          {isProcessing ? (
+            <div className="bg-black rounded-lg overflow-hidden mb-6 flex items-center justify-center" style={{ minHeight: '400px' }}>
+              <div className="text-center px-4 py-20">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
+                <h2 className="text-white text-xl font-bold mb-2">Processing Video</h2>
+                <p className="text-white text-md mb-4">{getStatusMessage()}</p>
+                <p className="text-white text-sm opacity-80">This page will automatically refresh when your video is ready.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-black rounded-lg overflow-hidden mb-6">
+              <VideoPlayer 
+                playbackUrl={video.playbackUrl}
+                thumbnailsUrl={getThumbnailsUrl(video.playbackUrl)}
+              />
+            </div>
+          )}
           
           <h1 className="text-2xl font-bold mb-2">{video.title}</h1>
-          <p className="text-gray-600 mb-4">Uploaded by <span className="font-medium">{video.username}</span> on {new Date(video.createdAt).toLocaleDateString()}</p>
+          <div className="flex justify-between items-center">
+            <p className="text-gray-600 mb-4">
+              Uploaded by <span className="font-medium">{video.username}</span> on {new Date(video.createdAt).toLocaleDateString()}
+            </p>
+            
+            <div className="flex items-center space-x-4">
+              {!isProcessing && (
+                <ShareButton videoId={video.id} title={video.title} />
+              )}
+              
+              {isProcessing && (
+                <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm">
+                  {video.status}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
