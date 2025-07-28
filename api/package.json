@@ -1,7 +1,7 @@
 {
-  "name": "sqs-transcode-consumer",
+  "name": "streamflow-api",
   "version": "1.0.0",
-  "description": "Polls an SQS queue for S3 events and triggers an ECS transcoding job.",
+  "description": "API for StreamFlow video management",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
@@ -10,20 +10,15 @@
   },
   "keywords": [
     "aws",
-    "sqs",
-    "ecs",
-    "dynamodb",
-    "transcoding"
+    "lambda",
+    "api-gateway",
+    "dynamodb"
   ],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.592.0",
-    "@aws-sdk/client-ecs": "^3.592.0",
-    "@aws-sdk/client-sqs": "^3.592.0",
-    "@aws-sdk/lib-dynamodb": "^3.592.0",
-    "@aws-sdk/util-dynamodb": "^3.592.0",
-    "dotenv": "^16.4.5"
+    "@aws-sdk/lib-dynamodb": "^3.592.0"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.138",

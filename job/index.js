@@ -3,11 +3,15 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createReadStream } = require('node:fs');
 const ffmpeg = require('fluent-ffmpeg');
+const { updateVideoMetadata } = require('./db-utils');
 
+// When deployed to ECS, the service will use the IAM role assigned to the task
 const s3Client = new S3Client({ region: process.env.AWS_REGION });
+
 const SOURCE_BUCKET = process.env.SOURCE_BUCKET; 
 const DESTINATION_BUCKET = process.env.DESTINATION_BUCKET; 
 const VIDEO_KEY = process.env.VIDEO_KEY;
+const OUTPUT_PREFIX = process.env.OUTPUT_PREFIX || `processed/${path.parse(VIDEO_KEY).name}-${Date.now()}/`;
 
 const RESOLUTIONS = [
     { name: '360p', width: 640, height: 360, bv: '800k', ba: '96k' },
@@ -20,7 +24,7 @@ const LOCAL_OUTPUT_DIR = path.resolve('./output');
 
 async function main() {
     const videoId = path.parse(VIDEO_KEY).name;
-    const outputPrefix = `processed/${videoId}-${Date.now()}/`;
+    const outputPrefix = OUTPUT_PREFIX;
 
     try {
         console.log(`🚀 Starting HLS job for s3://${SOURCE_BUCKET}/${VIDEO_KEY}`);
@@ -43,11 +47,31 @@ async function main() {
         await uploadDirectoryToS3(LOCAL_OUTPUT_DIR, DESTINATION_BUCKET, outputPrefix);
         console.log(`✅ All assets uploaded to s3://${DESTINATION_BUCKET}/${outputPrefix}`);
 
-        await createAndUploadManifest(outputPrefix, 'COMPLETED');
-        console.log('✅ Completion manifest uploaded.');
+        // Extract video thumbnail URL (first frame from sprite)
+        const thumbnailUrl = `https://${DESTINATION_BUCKET}.s3.amazonaws.com/${outputPrefix}sprite.jpg#xywh=0,0,160,90`;
+        const masterPlaylistUrl = `https://${DESTINATION_BUCKET}.s3.amazonaws.com/${outputPrefix}master.m3u8`;
+        
+        // Update DynamoDB with completion status and URLs
+        await updateVideoMetadata(videoId, {
+            status: 'COMPLETED',
+            thumbnailUrl,
+            masterPlaylistUrl,
+            completedAt: new Date().toISOString()
+        });
+        
+        await createAndUploadManifest(outputPrefix, 'COMPLETED', null, thumbnailUrl, masterPlaylistUrl);
+        console.log('✅ Completion manifest uploaded and DynamoDB updated.');
 
     } catch (error) {
         console.error(`❌ Job failed for ${VIDEO_KEY}:`, error);
+        
+        // Update DynamoDB with failure status
+        await updateVideoMetadata(videoId, {
+            status: 'FAILED',
+            errorMessage: error.message,
+            completedAt: new Date().toISOString()
+        });
+        
         await createAndUploadManifest(outputPrefix, 'FAILED', error.message);
         throw error;
         
@@ -171,12 +195,14 @@ async function uploadDirectoryToS3(dirPath, bucket, prefix) {
     await Promise.all(uploadPromises);
 }
 
-async function createAndUploadManifest(prefix, status, errorMessage = null) {
+async function createAndUploadManifest(prefix, status, errorMessage = null, thumbnailUrl = null, masterPlaylistUrl = null) {
     const manifestContent = {
         status: status,
         sourceVideo: `s3://${SOURCE_BUCKET}/${VIDEO_KEY}`,
         outputPrefix: prefix,
         masterPlaylist: status === 'COMPLETED' ? `${prefix}master.m3u8` : null,
+        thumbnailUrl: thumbnailUrl,
+        masterPlaylistUrl: masterPlaylistUrl,
         timestamp: new Date().toISOString(),
         error: errorMessage
     };

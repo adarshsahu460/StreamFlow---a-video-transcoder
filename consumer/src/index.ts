@@ -6,19 +6,13 @@ import path from 'path';
 dotenv.config({ path: '../.env' });
 
 const sqsClient = new SQSClient({
-    region: process.env.AWS_REGION as string,
-    credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY as string,
-        secretAccessKey: process.env.AWS_SECRET_KEY as string
-    }
+    region: process.env.AWS_REGION as string
+    // When deployed to Lambda, the service will use the IAM role assigned to the Lambda function
 });
 
 const ecsClient = new ECSClient({
-    region: process.env.AWS_REGION as string,
-    credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY as string,
-        secretAccessKey: process.env.AWS_SECRET_KEY as string
-    }
+    region: process.env.AWS_REGION as string
+    // When deployed to Lambda, the service will use the IAM role assigned to the Lambda function
 });
 
 const SQS_QUEUE_URL = process.env.SQS_QUEUE_URL;
@@ -66,6 +60,14 @@ async function init() {
                 for (const record of event.Records) {
                     const sourceBucket = record.s3.bucket.name;
                     const videoKey = decodeURIComponent(record.s3.object.key.replace(/\+/g, ' '));
+                    
+                    // Sanitize the input to prevent command injection and ensure safe filenames
+                    if (!isValidVideoPath(videoKey)) {
+                        console.error(`Invalid file path format in key: "${videoKey}". Skipping for security reasons.`);
+                        await deleteMessage(receiptHandle);
+                        continue;
+                    }
+
                     const filename = path.basename(videoKey);
                     if (!filename.includes(FILENAME_SEPARATOR)) {
                         console.error(`Invalid filename format: "${filename}". Expected 'username###video-name'. Deleting message.`);
@@ -123,6 +125,21 @@ async function deleteMessage(receiptHandle: string) {
         QueueUrl: SQS_QUEUE_URL,
         ReceiptHandle: receiptHandle
     }));
+}
+
+/**
+ * Validates that a video path is safe and doesn't contain any potentially harmful characters
+ * that could be used for path traversal or command injection
+ */
+function isValidVideoPath(path: string): boolean {
+    // Check for null bytes, control characters, or path traversal attempts
+    if (/[\x00-\x1F]|\.\.\/|\.\.\\/i.test(path)) {
+        return false;
+    }
+    
+    // Allow only alphanumeric characters, hyphens, underscores, periods, and forward slashes
+    // Customize this regex based on your specific filename requirements
+    return /^[a-zA-Z0-9\-_\/.#]+$/.test(path);
 }
 
 init();

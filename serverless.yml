@@ -1,0 +1,107 @@
+service: streamflow
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'ap-south-1'}
+  environment:
+    VIDEO_TABLE_NAME: VideoMetadata
+    DESTINATION_BUCKET: ${self:custom.destinationBucket}
+    TASK_DEFINITION: ${self:custom.taskDefinition}
+    CONTAINER_NAME: video-transcoder
+    CLUSTER_NAME: ${self:custom.clusterName}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+          Resource: !GetAtt VideoMetadataTable.Arn
+        - Effect: Allow
+          Action:
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+          Resource: !GetAtt VideoUploadQueue.Arn
+        - Effect: Allow
+          Action:
+            - ecs:RunTask
+          Resource: ${self:custom.taskDefinitionArn}
+        - Effect: Allow
+          Action:
+            - iam:PassRole
+          Resource: "*"
+
+custom:
+  destinationBucket: ${opt:bucket, 'your-destination-bucket'}
+  taskDefinition: video-transcoder
+  taskDefinitionArn: arn:aws:ecs:${self:provider.region}:${aws:accountId}:task-definition/${self:custom.taskDefinition}
+  clusterName: video-transcoder-cluster
+
+functions:
+  videoProcessor:
+    handler: consumer/dist/lambda.handler
+    events:
+      - sqs:
+          arn: !GetAtt VideoUploadQueue.Arn
+          batchSize: 10
+  
+  getVideos:
+    handler: api/dist/index.getVideos
+    events:
+      - http:
+          path: videos
+          method: get
+          cors: true
+  
+  getVideo:
+    handler: api/dist/index.getVideo
+    events:
+      - http:
+          path: videos/{id}
+          method: get
+          cors: true
+
+resources:
+  Resources:
+    VideoMetadataTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: VideoMetadata
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: videoId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: videoId
+            KeyType: HASH
+    
+    VideoUploadQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: video-upload-queue
+        VisibilityTimeout: 300
+        MessageRetentionPeriod: 345600 # 4 days
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt VideoUploadDeadLetterQueue.Arn
+          maxReceiveCount: 5
+    
+    VideoUploadDeadLetterQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: video-upload-dlq
+        MessageRetentionPeriod: 1209600 # 14 days
+  
+  Outputs:
+    ApiEndpoint:
+      Description: "API Gateway endpoint URL"
+      Value: !Sub "https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}"
+    
+    VideoTable:
+      Description: "DynamoDB Table for Videos"
+      Value: !Ref VideoMetadataTable

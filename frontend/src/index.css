@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900;
+  }
+  
+  h1 {
+    @apply text-2xl font-bold;
+  }
+  
+  h2 {
+    @apply text-xl font-bold;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-md font-medium transition-colors;
+  }
+  
+  .btn-primary {
+    @apply bg-primary-600 hover:bg-primary-700 text-white;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-200 hover:bg-gray-300 text-gray-800;
+  }
+  
+  .card {
+    @apply bg-white rounded-lg shadow-md overflow-hidden transition-all;
+  }
+  
+  .card-hover {
+    @apply hover:shadow-lg hover:-translate-y-1;
+  }
+  
+  .input {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500;
+  }
+}
+
+/* Video.js custom styling */
+.vjs-default-skin {
+  @apply rounded-lg overflow-hidden;
+}
+
+.video-thumbnail {
+  @apply object-cover rounded-t-lg aspect-video w-full;
+}
+
+.video-js .vjs-big-play-button {
+  @apply bg-primary-600 border-none rounded-full h-16 w-16 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center;
+}
