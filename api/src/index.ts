@@ -3,7 +3,6 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { v4 as uuidv4 } from 'uuid';
 
 // Initialize clients
 const ddbClient = new DynamoDBClient({ region: process.env.AWS_REGION });
@@ -237,8 +236,8 @@ async function storeInitialVideoMetadata(metadata: VideoMetadata) {
 /**
  * Maps MIME types to file extensions
  */
-function getFileExtensionFromMimeType(mimeType) {
-  const mimeToExtension = {
+function getFileExtensionFromMimeType(mimeType: string): string {
+  const mimeToExtension: { [key: string]: string } = {
     'video/mp4': '.mp4',
     'video/quicktime': '.mov',
     'video/x-msvideo': '.avi',

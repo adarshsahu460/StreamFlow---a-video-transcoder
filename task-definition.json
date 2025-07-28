@@ -3,13 +3,13 @@
   "containerDefinitions": [
     {
       "name": "video-transcoder",
-      "image": "YOUR_ACCOUNT_ID.dkr.ecr.YOUR_REGION.amazonaws.com/video-transcoder:latest",
+      "image": "534613823192.dkr.ecr.ap-south-1.amazonaws.com/video-transcoder:latest",
       "essential": true,
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
           "awslogs-group": "/ecs/video-transcoder",
-          "awslogs-region": "YOUR_REGION",
+          "awslogs-region": "ap-south-1",
           "awslogs-stream-prefix": "ecs"
         }
       },
@@ -18,8 +18,8 @@
       "volumesFrom": []
     }
   ],
-  "executionRoleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskExecutionRole",
-  "taskRoleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/videoTranscoderTaskRole",
+  "executionRoleArn": "arn:aws:iam::534613823192:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::534613823192:role/videoTranscoderTaskRole",
   "networkMode": "awsvpc",
   "requiresCompatibilities": [
     "FARGATE"

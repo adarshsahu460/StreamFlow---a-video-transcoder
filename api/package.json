@@ -18,9 +18,9 @@
   "license": "ISC",
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.592.0",
-    "@aws-sdk/client-s3": "^3.772.0",
+    "@aws-sdk/client-s3": "^3.850.0",
     "@aws-sdk/lib-dynamodb": "^3.592.0",
-    "@aws-sdk/s3-request-presigner": "^3.772.0",
+    "@aws-sdk/s3-request-presigner": "^3.850.0",
     "uuid": "^9.0.1"
   },
   "devDependencies": {

@@ -21,7 +21,7 @@
     "@aws-sdk/client-dynamodb": "^3.592.0",
     "@aws-sdk/client-ecs": "^3.592.0",
     "@aws-sdk/client-sqs": "^3.592.0",
-    "@aws-sdk/lib-dynamodb": "^3.592.0",
+    "@aws-sdk/lib-dynamodb": "^3.850.0",
     "@aws-sdk/util-dynamodb": "^3.592.0",
     "dotenv": "^16.4.5"
   },
