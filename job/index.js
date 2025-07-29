@@ -326,8 +326,7 @@ async function uploadDirectoryToS3(dirPath, bucket, prefix) {
             return s3Client.send(new PutObjectCommand({
                 Bucket: bucket,
                 Key: s3Key,
-                Body: createReadStream(localFilePath),
-                ACL: 'public-read', // Add public-read ACL to make files publicly accessible
+                Body: createReadStream(localFilePath)
             }));
         });
 
@@ -351,7 +350,7 @@ async function createAndUploadManifest(prefix, status, errorMessage = null, thum
         Key: `${prefix}manifest.json`,
         Body: JSON.stringify(manifestContent, null, 2), 
         ContentType: 'application/json',
-        ACL: 'public-read' // Add public-read ACL
+        // Removed ACL parameter since bucket doesn't allow ACLs
     });
 
     await s3Client.send(command);

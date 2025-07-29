@@ -219,8 +219,7 @@ export const getUploadUrl: APIGatewayProxyHandler = async (event) => {
     const command = new PutObjectCommand({
       Bucket: SOURCE_BUCKET,
       Key: s3Key,
-      ContentType: fileType,
-      ACL: 'public-read' // Add public-read ACL to make video accessible
+      ContentType: fileType
     });
     
     console.log('🔐 Creating presigned URL for upload...');
