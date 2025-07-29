@@ -1,0 +1,21 @@
+{
+  "QueueConfigurations": [
+    {
+      "Id": "VideoUploadNotification",
+      "QueueArn": "arn:aws:sqs:ap-south-1:534613823192:video-upload-queue",
+      "Events": [
+        "s3:ObjectCreated:*"
+      ],
+      "Filter": {
+        "Key": {
+          "FilterRules": [
+            {
+              "Name": "suffix",
+              "Value": ".mp4"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

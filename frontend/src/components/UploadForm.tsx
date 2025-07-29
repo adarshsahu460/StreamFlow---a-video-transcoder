@@ -48,31 +48,45 @@ const UploadForm = ({ onUploadComplete }: UploadFormProps) => {
       </div>
     </div>
   );
-  
-  // Handle form submission
+   // Handle form submission
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     
+    console.log('🚀 Upload form submitted');
+    
     if (!file) {
+      console.warn('❌ Upload validation failed: No file selected');
       setError('Please select a video file');
       return;
     }
     
     if (!title.trim()) {
+      console.warn('❌ Upload validation failed: No title provided');
       setError('Please enter a title');
       return;
     }
     
     if (!username.trim()) {
+      console.warn('❌ Upload validation failed: No username provided');
       setError('Please enter a username');
       return;
     }
     
+    console.log('📋 Upload form validation passed:', {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+      title: title.trim(),
+      username: username.trim(),
+      fileSizeInMB: (file.size / (1024 * 1024)).toFixed(2) + ' MB'
+    });
+
     try {
       setIsUploading(true);
       setError(null);
       setUploadProgress(0);
       
+      console.log('📡 Step 1: Getting presigned URL...');
       // Step 1: Get presigned URL
       const uploadData = await getUploadUrl({
         title,
@@ -80,6 +94,13 @@ const UploadForm = ({ onUploadComplete }: UploadFormProps) => {
         fileType: file.type
       });
       
+      console.log('✅ Step 1 completed: Presigned URL obtained:', {
+        videoId: uploadData.videoId,
+        key: uploadData.key,
+        hasUploadUrl: !!uploadData.uploadUrl
+      });
+      
+      console.log('📤 Step 2: Starting file upload...');
       // Step 2: Upload the file with progress tracking
       await uploadVideo(
         uploadData.uploadUrl, 
@@ -88,6 +109,9 @@ const UploadForm = ({ onUploadComplete }: UploadFormProps) => {
           setUploadProgress(percentage);
         }
       );
+      
+      console.log('✅ Step 2 completed: File upload successful');
+      console.log('🧹 Resetting form state...');
       
       // Reset form
       setTitle('');
@@ -100,11 +124,21 @@ const UploadForm = ({ onUploadComplete }: UploadFormProps) => {
       // Close modal and trigger refresh if needed
       setIsModalOpen(false);
       if (onUploadComplete) {
+        console.log('🔄 Triggering upload complete callback');
         onUploadComplete();
       }
       
+      console.log('🎉 Upload process completed successfully!');
+      
     } catch (err) {
-      console.error('Upload error:', err);
+      console.error('❌ Upload process failed:', {
+        error: err instanceof Error ? err.message : 'Unknown error',
+        errorStack: err instanceof Error ? err.stack : undefined,
+        fileName: file?.name,
+        fileSize: file?.size,
+        title,
+        username
+      });
       
       // Provide more specific error messages based on the error
       if (err instanceof Error) {
@@ -122,6 +156,7 @@ const UploadForm = ({ onUploadComplete }: UploadFormProps) => {
       }
     } finally {
       setIsUploading(false);
+      console.log('🏁 Upload form state reset');
     }
   };
 

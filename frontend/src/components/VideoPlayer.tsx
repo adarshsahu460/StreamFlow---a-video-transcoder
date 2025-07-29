@@ -45,8 +45,8 @@ const VideoPlayer = ({ playbackUrl, thumbnailsUrl, className = '' }: VideoPlayer
       })
       
       // Add thumbnails if available
-      if (thumbnailsUrl && playerRef.current.vttThumbnails) {
-        playerRef.current.vttThumbnails({
+      if (thumbnailsUrl && (playerRef.current as any).vttThumbnails) {
+        (playerRef.current as any).vttThumbnails({
           src: thumbnailsUrl
         })
       }

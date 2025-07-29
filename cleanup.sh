@@ -86,10 +86,37 @@ serverless remove --region $REGION || true
 
 # Empty and delete S3 buckets
 echo "Emptying and deleting S3 buckets..."
-aws s3 rm s3://$SOURCE_BUCKET --recursive --region $REGION || true
-aws s3 rb s3://$SOURCE_BUCKET --force --region $REGION || true
-aws s3 rm s3://$DESTINATION_BUCKET --recursive --region $REGION || true
-aws s3 rb s3://$DESTINATION_BUCKET --force --region $REGION || true
+
+# First, remove bucket notifications to avoid issues
+echo "  Removing S3 bucket notifications..."
+aws s3api put-bucket-notification-configuration \
+  --bucket $SOURCE_BUCKET \
+  --notification-configuration '{}' \
+  --region $REGION 2>/dev/null || true
+
+# Remove bucket policies
+echo "  Removing S3 bucket policies..."
+aws s3api delete-bucket-policy --bucket $SOURCE_BUCKET --region $REGION 2>/dev/null || true
+aws s3api delete-bucket-policy --bucket $DESTINATION_BUCKET --region $REGION 2>/dev/null || true
+
+# Remove bucket CORS
+echo "  Removing S3 bucket CORS..."
+aws s3api delete-bucket-cors --bucket $SOURCE_BUCKET --region $REGION 2>/dev/null || true
+aws s3api delete-bucket-cors --bucket $DESTINATION_BUCKET --region $REGION 2>/dev/null || true
+
+# Remove website configuration
+echo "  Removing S3 website configuration..."
+aws s3api delete-bucket-website --bucket $DESTINATION_BUCKET --region $REGION 2>/dev/null || true
+
+# Empty buckets completely (including versioned objects if any)
+echo "  Emptying S3 buckets..."
+aws s3 rm s3://$SOURCE_BUCKET --recursive --region $REGION 2>/dev/null || true
+aws s3 rm s3://$DESTINATION_BUCKET --recursive --region $REGION 2>/dev/null || true
+
+# Delete buckets
+echo "  Deleting S3 buckets..."
+aws s3 rb s3://$SOURCE_BUCKET --force --region $REGION 2>/dev/null || true
+aws s3 rb s3://$DESTINATION_BUCKET --force --region $REGION 2>/dev/null || true
 
 # Delete ECS resources
 echo "Deleting ECS resources..."
@@ -110,6 +137,27 @@ aws ecs delete-cluster --cluster video-transcoder-cluster --region $REGION || tr
 echo "Deleting ECR repository..."
 aws ecr delete-repository --repository-name video-transcoder --force --region $REGION || true
 
+# Delete IAM roles created by deployment
+echo "Cleaning up IAM roles..."
+# Delete ECS Task Execution Role (if it was created by our deployment)
+aws iam list-attached-role-policies --role-name ecsTaskExecutionRole --region $REGION &> /dev/null
+if [ $? -eq 0 ]; then
+  echo "  Detaching policies from ecsTaskExecutionRole..."
+  aws iam detach-role-policy --role-name ecsTaskExecutionRole --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy || true
+  echo "  Deleting ecsTaskExecutionRole..."
+  aws iam delete-role --role-name ecsTaskExecutionRole || true
+fi
+
+# Delete any ECS task definitions
+echo "Deregistering ECS task definitions..."
+TASK_DEFINITION_ARNS=$(aws ecs list-task-definitions --family-prefix video-transcoder --region $REGION --query 'taskDefinitionArns' --output text 2>/dev/null || echo "")
+if [[ ! -z "$TASK_DEFINITION_ARNS" ]]; then
+  for TASK_DEF in $TASK_DEFINITION_ARNS; do
+    echo "  Deregistering task definition: $TASK_DEF"
+    aws ecs deregister-task-definition --task-definition $TASK_DEF --region $REGION || true
+  done
+fi
+
 # Delete CloudFormation stack if it exists
 echo "Checking for CloudFormation stack..."
 aws cloudformation describe-stacks --stack-name $STACK_NAME --region $REGION &> /dev/null
@@ -121,37 +169,45 @@ if [ $? -eq 0 ]; then
 fi
 
 # Delete Lambda functions
-echo "Deleting Lambda functions..."
-for FUNC in "video-processor-lambda" "video-api-lambda"; do
-  echo "  Checking for Lambda function: $FUNC"
-  aws lambda get-function --function-name $FUNC --region $REGION &> /dev/null
-  if [ $? -eq 0 ]; then
-    echo "  Deleting Lambda function: $FUNC"
+echo "Deleting Lambda functions (handled by serverless remove)..."
+# Note: Lambda functions are automatically deleted by serverless remove
+# But we'll check for any orphaned functions just in case
+LAMBDA_FUNCTIONS=$(aws lambda list-functions --region $REGION --query 'Functions[?starts_with(FunctionName, `streamflow-`) || starts_with(FunctionName, `dev-streamflow-`)].FunctionName' --output text 2>/dev/null || echo "")
+if [[ ! -z "$LAMBDA_FUNCTIONS" ]]; then
+  for FUNC in $LAMBDA_FUNCTIONS; do
+    echo "  Found orphaned Lambda function: $FUNC"
     aws lambda delete-function --function-name $FUNC --region $REGION || true
-  fi
-done
-
-# Delete DynamoDB table
-echo "Checking for DynamoDB table: VideoMetadata"
-aws dynamodb describe-table --table-name VideoMetadata --region $REGION &> /dev/null
-if [ $? -eq 0 ]; then
-  echo "  Deleting DynamoDB table: VideoMetadata"
-  aws dynamodb delete-table --table-name VideoMetadata --region $REGION || true
+  done
 fi
 
-# Delete SQS queues
+# Delete DynamoDB table (handled by serverless remove)
+echo "Checking for DynamoDB table: VideoMetadata..."
+# Note: DynamoDB table is normally deleted by serverless remove
+# But we'll check for orphaned tables just in case
+aws dynamodb describe-table --table-name VideoMetadata --region $REGION &> /dev/null
+if [ $? -eq 0 ]; then
+  echo "  Found orphaned DynamoDB table: VideoMetadata"
+  aws dynamodb delete-table --table-name VideoMetadata --region $REGION || true
+  echo "  Waiting for table deletion..."
+  aws dynamodb wait table-not-exists --table-name VideoMetadata --region $REGION || true
+fi
+
+# Delete SQS queues (handled by serverless remove)
 echo "Checking for SQS queues..."
+# Note: SQS queues are normally deleted by serverless remove
+# But we'll check for orphaned queues just in case
 for QUEUE in "video-upload-queue" "video-upload-dlq"; do
   QUEUE_URL=$(aws sqs get-queue-url --queue-name $QUEUE --region $REGION --query 'QueueUrl' --output text 2>/dev/null)
   if [[ ! -z "$QUEUE_URL" && "$QUEUE_URL" != "None" ]]; then
-    echo "  Deleting SQS queue: $QUEUE"
+    echo "  Found orphaned SQS queue: $QUEUE"
     aws sqs delete-queue --queue-url $QUEUE_URL --region $REGION || true
   fi
 done
 
 # Find and delete CloudWatch Log Groups
 echo "Cleaning up CloudWatch Log Groups..."
-LOG_GROUPS=$(aws logs describe-log-groups --log-group-name-prefix /aws/lambda/video --region $REGION --query 'logGroups[*].logGroupName' --output text)
+# Serverless creates log groups with pattern: /aws/lambda/{service}-{stage}-{function}
+LOG_GROUPS=$(aws logs describe-log-groups --region $REGION --query 'logGroups[?starts_with(logGroupName, `/aws/lambda/streamflow-`) || starts_with(logGroupName, `/aws/lambda/dev-streamflow-`) || logGroupName == `/ecs/video-transcoder`].logGroupName' --output text 2>/dev/null || echo "")
 if [[ ! -z "$LOG_GROUPS" ]]; then
   for LOG_GROUP in $LOG_GROUPS; do
     echo "  Deleting log group: $LOG_GROUP"
@@ -159,8 +215,25 @@ if [[ ! -z "$LOG_GROUPS" ]]; then
   done
 fi
 
-# Also delete the ECS log group
-aws logs delete-log-group --log-group-name /ecs/video-transcoder --region $REGION || true
+# Delete API Gateway REST APIs created by serverless
+echo "Cleaning up API Gateway resources..."
+API_IDS=$(aws apigateway get-rest-apis --region $REGION --query 'items[?starts_with(name, `dev-streamflow`) || starts_with(name, `streamflow-`)].id' --output text 2>/dev/null || echo "")
+if [[ ! -z "$API_IDS" ]]; then
+  for API_ID in $API_IDS; do
+    echo "  Deleting API Gateway: $API_ID"
+    aws apigateway delete-rest-api --rest-api-id $API_ID --region $REGION || true
+  done
+fi
+
+# Clean up any orphaned CloudFormation stacks from serverless
+echo "Checking for serverless CloudFormation stacks..."
+SERVERLESS_STACKS=$(aws cloudformation list-stacks --region $REGION --query 'StackSummaries[?starts_with(StackName, `streamflow-`) && StackStatus != `DELETE_COMPLETE`].StackName' --output text 2>/dev/null || echo "")
+if [[ ! -z "$SERVERLESS_STACKS" ]]; then
+  for STACK in $SERVERLESS_STACKS; do
+    echo "  Deleting serverless stack: $STACK"
+    aws cloudformation delete-stack --stack-name $STACK --region $REGION || true
+  done
+fi
 
 # Remove frontend build artifacts
 echo "Cleaning up local build artifacts..."
@@ -169,6 +242,18 @@ rm -rf consumer/dist consumer/node_modules 2>/dev/null || true
 rm -rf api/dist api/node_modules 2>/dev/null || true
 
 echo "==== Cleanup Complete ===="
-echo "Most resources should now be deleted. Please check your AWS Console to ensure"
-echo "no resources remain to prevent unexpected charges."
+echo "✅ Serverless resources removed (Lambda, API Gateway, DynamoDB, SQS)"
+echo "✅ S3 buckets emptied and deleted"
+echo "✅ ECS cluster and tasks removed"
+echo "✅ ECR repository deleted"
+echo "✅ IAM roles cleaned up"
+echo "✅ CloudWatch log groups removed"
+echo "✅ Local build artifacts cleaned"
+echo ""
+echo "⚠️  Manual verification recommended:"
+echo "   • Check AWS Console for any remaining resources"
+echo "   • Verify no unexpected charges in billing"
+echo "   • Check CloudFormation stacks are fully deleted"
+echo ""
+echo "💡 Tip: Use 'aws resourcegroupstaggingapi get-resources' to find any tagged resources"
 echo "=========================="

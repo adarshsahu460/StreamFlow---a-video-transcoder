@@ -31,21 +31,36 @@ export const getVideos: APIGatewayProxyHandler = async (event) => {
     
     let filterExpression = 'attribute_exists(videoId)';
     let expressionAttributeValues = {};
+    let expressionAttributeNames = {};
     
     // Only filter by COMPLETED status if not including pending videos
     if (!includePending) {
-      filterExpression = 'status = :status';
+      filterExpression = '#status = :status';
       expressionAttributeValues = {
         ':status': 'COMPLETED'
       };
+      expressionAttributeNames = {
+        '#status': 'status'
+      };
     }
 
-    const scanCommand = new ScanCommand({
+    const scanParams: any = {
       TableName: VIDEO_TABLE_NAME,
       FilterExpression: filterExpression,
-      ExpressionAttributeValues: expressionAttributeValues,
       Limit: MAX_VIDEOS
-    });
+    };
+
+    // Only add ExpressionAttributeValues if it's not empty
+    if (Object.keys(expressionAttributeValues).length > 0) {
+      scanParams.ExpressionAttributeValues = expressionAttributeValues;
+    }
+
+    // Only add ExpressionAttributeNames if it's not empty
+    if (Object.keys(expressionAttributeNames).length > 0) {
+      scanParams.ExpressionAttributeNames = expressionAttributeNames;
+    }
+
+    const scanCommand = new ScanCommand(scanParams);
 
     const response = await docClient.send(scanCommand);
     
@@ -130,13 +145,32 @@ export const getVideo: APIGatewayProxyHandler = async (event) => {
 };
 
 export const getUploadUrl: APIGatewayProxyHandler = async (event) => {
+  console.log('🚀 getUploadUrl function invoked');
+  console.log('📝 Event details:', JSON.stringify({
+    httpMethod: event.httpMethod,
+    path: event.path,
+    headers: event.headers,
+    requestContext: {
+      requestId: event.requestContext.requestId,
+      sourceIp: event.requestContext.identity.sourceIp
+    }
+  }, null, 2));
+  
   try {
     // Parse request body
     const body = event.body ? JSON.parse(event.body) : {};
     const { title, username, fileType } = body;
     
+    console.log('📋 Upload request received:', {
+      title,
+      username,
+      fileType,
+      bodySize: event.body?.length || 0
+    });
+    
     // Validate required fields
     if (!title || !username || !fileType) {
+      console.warn('❌ Validation failed: Missing required fields');
       return {
         statusCode: 400,
         headers,
@@ -148,6 +182,7 @@ export const getUploadUrl: APIGatewayProxyHandler = async (event) => {
     
     // Validate file type (only allow video types)
     if (!fileType.startsWith('video/')) {
+      console.warn('❌ Validation failed: Invalid file type:', fileType);
       return {
         statusCode: 400,
         headers,
@@ -168,6 +203,14 @@ export const getUploadUrl: APIGatewayProxyHandler = async (event) => {
     // The S3 key includes the naming pattern needed for the processor
     const s3Key = `${videoId}${getFileExtensionFromMimeType(fileType)}`;
     
+    console.log('🔧 Generated video metadata:', {
+      sanitizedTitle,
+      timestamp,
+      videoId,
+      s3Key,
+      sourceBucket: SOURCE_BUCKET
+    });
+    
     // Create presigned URL for uploading
     const command = new PutObjectCommand({
       Bucket: SOURCE_BUCKET,
@@ -175,29 +218,52 @@ export const getUploadUrl: APIGatewayProxyHandler = async (event) => {
       ContentType: fileType
     });
     
+    console.log('🔐 Creating presigned URL for upload...');
     const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+    console.log('✅ Presigned URL created successfully', {
+      bucket: SOURCE_BUCKET,
+      key: s3Key,
+      expiresIn: '1 hour'
+    });
     
     // Store initial metadata in DynamoDB
-    await storeInitialVideoMetadata({
+    console.log('💾 Storing initial metadata in DynamoDB...');
+    const initialMetadata = {
       videoId,
       title,
       username,
       status: 'PENDING',
       sourceKey: s3Key,
       createdAt: new Date().toISOString()
+    };
+    
+    await storeInitialVideoMetadata(initialMetadata);
+    console.log('✅ Initial metadata stored in DynamoDB:', initialMetadata);
+    
+    const response = {
+      uploadUrl: presignedUrl,
+      videoId,
+      key: s3Key
+    };
+    
+    console.log('🎉 getUploadUrl completed successfully:', {
+      videoId,
+      key: s3Key,
+      hasUploadUrl: !!response.uploadUrl
     });
     
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({
-        uploadUrl: presignedUrl,
-        videoId,
-        key: s3Key
-      })
+      body: JSON.stringify(response)
     };
   } catch (error) {
-    console.error('Error generating upload URL:', error);
+    console.error('❌ Error in getUploadUrl function:', {
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      errorStack: error instanceof Error ? error.stack : undefined,
+      requestId: event.requestContext.requestId
+    });
+    
     return {
       statusCode: 500,
       headers,
@@ -224,13 +290,36 @@ interface VideoMetadata {
  * Stores initial video metadata in DynamoDB
  */
 async function storeInitialVideoMetadata(metadata: VideoMetadata) {
-  const command = new PutCommand({
-    TableName: VIDEO_TABLE_NAME,
-    Item: metadata
-  });
-  
-  await docClient.send(command);
-  console.log(`✅ Stored initial metadata for ${metadata.videoId} in DynamoDB`);
+  try {
+    console.log('💾 Starting DynamoDB storage operation:', {
+      tableName: VIDEO_TABLE_NAME,
+      videoId: metadata.videoId,
+      metadata: metadata
+    });
+    
+    const command = new PutCommand({
+      TableName: VIDEO_TABLE_NAME,
+      Item: metadata
+    });
+    
+    const result = await docClient.send(command);
+    console.log('✅ Successfully stored initial metadata in DynamoDB:', {
+      videoId: metadata.videoId,
+      status: metadata.status,
+      tableName: VIDEO_TABLE_NAME,
+      result: result
+    });
+    
+  } catch (error) {
+    console.error('❌ Failed to store initial metadata in DynamoDB:', {
+      videoId: metadata.videoId,
+      tableName: VIDEO_TABLE_NAME,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      errorStack: error instanceof Error ? error.stack : undefined,
+      metadata: metadata
+    });
+    throw error; // Re-throw to propagate the error
+  }
 }
 
 /**

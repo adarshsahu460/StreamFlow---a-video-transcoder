@@ -46,8 +46,8 @@ provider:
           Resource: "*"
 
 custom:
-  destinationBucket: ${opt:bucket, 'your-destination-bucket'}
-  sourceBucket: ${opt:sourceBucket, 'your-source-bucket'}
+  destinationBucket: ${param:bucket, 'your-destination-bucket'}
+  sourceBucket: ${param:sourceBucket, 'your-source-bucket'}
   taskDefinition: video-transcoder
   taskDefinitionArn: arn:aws:ecs:${self:provider.region}:${aws:accountId}:task-definition/${self:custom.taskDefinition}
   clusterName: video-transcoder-cluster

@@ -26,24 +26,48 @@ async function main() {
     const videoId = path.parse(VIDEO_KEY).name;
     const outputPrefix = OUTPUT_PREFIX;
 
-    try {
-        console.log(`🚀 Starting HLS job for s3://${SOURCE_BUCKET}/${VIDEO_KEY}`);
-        await fs.mkdir(LOCAL_OUTPUT_DIR, { recursive: true });
-        
-        await downloadFile(SOURCE_BUCKET, VIDEO_KEY, LOCAL_SOURCE_VIDEO);
-        console.log('✅ Source file downloaded.');
+    console.log('🚀 Starting HLS transcoding job:', {
+        videoId,
+        sourceBucket: SOURCE_BUCKET,
+        destinationBucket: DESTINATION_BUCKET,
+        videoKey: VIDEO_KEY,
+        outputPrefix,
+        resolutions: RESOLUTIONS,
+        environment: {
+            AWS_REGION: process.env.AWS_REGION,
+            VIDEO_TABLE_NAME: process.env.VIDEO_TABLE_NAME
+        }
+    });
 
-        const hlsPromises = RESOLUTIONS.map(res => 
-            transcodeToHLS(res, LOCAL_OUTPUT_DIR)
-        );
+    try {
+        console.log('📁 Creating local output directory...');
+        await fs.mkdir(LOCAL_OUTPUT_DIR, { recursive: true });
+        console.log('✅ Local output directory created:', LOCAL_OUTPUT_DIR);
+        
+        console.log('⬇️ Starting video download from S3...');
+        await downloadFile(SOURCE_BUCKET, VIDEO_KEY, LOCAL_SOURCE_VIDEO);
+        console.log('✅ Source video downloaded successfully:', {
+            sourcePath: `s3://${SOURCE_BUCKET}/${VIDEO_KEY}`,
+            localPath: LOCAL_SOURCE_VIDEO
+        });
+
+        console.log('🎬 Starting HLS transcoding for all resolutions...');
+        const hlsPromises = RESOLUTIONS.map(res => {
+            console.log(`🔄 Queuing transcoding for ${res.name} (${res.width}x${res.height})`);
+            return transcodeToHLS(res, LOCAL_OUTPUT_DIR);
+        });
+        
+        console.log('🖼️ Starting sprite sheet generation...');
         const spritePromise = generateSpriteSheet(LOCAL_OUTPUT_DIR);
         
         await Promise.all([...hlsPromises, spritePromise]);
-        console.log('✅ HLS renditions and sprites created locally.');
+        console.log('✅ All HLS renditions and sprites created locally');
 
+        console.log('📝 Creating master M3U8 playlist...');
         await createMasterPlaylist(RESOLUTIONS, LOCAL_OUTPUT_DIR);
-        console.log('✅ Master M3U8 playlist created.');
+        console.log('✅ Master M3U8 playlist created');
 
+        console.log('⬆️ Starting upload to S3...');
         await uploadDirectoryToS3(LOCAL_OUTPUT_DIR, DESTINATION_BUCKET, outputPrefix);
         console.log(`✅ All assets uploaded to s3://${DESTINATION_BUCKET}/${outputPrefix}`);
 
@@ -51,6 +75,13 @@ async function main() {
         const thumbnailUrl = `https://${DESTINATION_BUCKET}.s3.amazonaws.com/${outputPrefix}sprite.jpg#xywh=0,0,160,90`;
         const masterPlaylistUrl = `https://${DESTINATION_BUCKET}.s3.amazonaws.com/${outputPrefix}master.m3u8`;
         
+        console.log('📊 Generated final URLs:', {
+            thumbnailUrl,
+            masterPlaylistUrl,
+            videoId
+        });
+        
+        console.log('💾 Updating DynamoDB with completion status...');
         // Update DynamoDB with completion status and URLs
         await updateVideoMetadata(videoId, {
             status: 'COMPLETED',
@@ -59,12 +90,28 @@ async function main() {
             completedAt: new Date().toISOString()
         });
         
+        console.log('📄 Creating completion manifest...');
         await createAndUploadManifest(outputPrefix, 'COMPLETED', null, thumbnailUrl, masterPlaylistUrl);
-        console.log('✅ Completion manifest uploaded and DynamoDB updated.');
+        console.log('✅ Completion manifest uploaded and DynamoDB updated');
+        
+        console.log('🎉 Video processing completed successfully!', {
+            videoId,
+            outputPrefix,
+            thumbnailUrl,
+            masterPlaylistUrl
+        });
 
     } catch (error) {
-        console.error(`❌ Job failed for ${VIDEO_KEY}:`, error);
+        console.error(`❌ Job failed for ${VIDEO_KEY}:`, {
+            videoId,
+            error: error.message,
+            errorStack: error.stack,
+            outputPrefix,
+            sourceBucket: SOURCE_BUCKET,
+            destinationBucket: DESTINATION_BUCKET
+        });
         
+        console.log('💾 Updating DynamoDB with failure status...');
         // Update DynamoDB with failure status
         await updateVideoMetadata(videoId, {
             status: 'FAILED',
@@ -72,48 +119,139 @@ async function main() {
             completedAt: new Date().toISOString()
         });
         
+        console.log('📄 Creating failure manifest...');
         await createAndUploadManifest(outputPrefix, 'FAILED', error.message);
+        
+        console.error('❌ Video processing failed completely');
         throw error;
         
     } finally {
-        console.log('🧹 Cleaning up local files...');
-        await fs.rm(LOCAL_OUTPUT_DIR, { recursive: true, force: true });
-        await fs.rm(LOCAL_SOURCE_VIDEO, { force: true });
+        console.log('🧹 Starting cleanup of local files...');
+        try {
+            await fs.rm(LOCAL_OUTPUT_DIR, { recursive: true, force: true });
+            console.log('✅ Cleaned up output directory:', LOCAL_OUTPUT_DIR);
+        } catch (cleanupError) {
+            console.warn('⚠️ Failed to cleanup output directory:', cleanupError.message);
+        }
+        
+        try {
+            await fs.rm(LOCAL_SOURCE_VIDEO, { force: true });
+            console.log('✅ Cleaned up source video file:', LOCAL_SOURCE_VIDEO);
+        } catch (cleanupError) {
+            console.warn('⚠️ Failed to cleanup source video file:', cleanupError.message);
+        }
+        
+        console.log('🧹 Cleanup completed');
     }
 }
 
 async function downloadFile(bucket, key, downloadPath) {
-    const command = new GetObjectCommand({ Bucket: bucket, Key: key });
-    const { Body } = await s3Client.send(command);
-    await fs.writeFile(downloadPath, Body);
+    console.log('⬇️ Starting file download from S3:', {
+        bucket,
+        key,
+        downloadPath,
+        s3Url: `s3://${bucket}/${key}`
+    });
+    
+    try {
+        const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+        
+        console.log('📡 Sending GetObject command to S3...');
+        const { Body, ContentLength, ContentType } = await s3Client.send(command);
+        
+        console.log('📊 S3 object metadata:', {
+            contentLength: ContentLength,
+            contentType: ContentType,
+            sizeInMB: ContentLength ? (ContentLength / (1024 * 1024)).toFixed(2) : 'Unknown'
+        });
+        
+        console.log('💾 Writing file to local storage...');
+        await fs.writeFile(downloadPath, Body);
+        
+        console.log('✅ File download completed successfully:', {
+            bucket,
+            key,
+            downloadPath,
+            sizeInMB: ContentLength ? (ContentLength / (1024 * 1024)).toFixed(2) + ' MB' : 'Unknown size'
+        });
+        
+    } catch (error) {
+        console.error('❌ Failed to download file from S3:', {
+            bucket,
+            key,
+            downloadPath,
+            error: error.message,
+            errorStack: error.stack
+        });
+        throw error;
+    }
 }
 
 function transcodeToHLS(resolution, outputDir) {
     return new Promise((resolve, reject) => {
         const resolutionDir = path.join(outputDir, resolution.name);
-        fs.mkdir(resolutionDir, { recursive: true });
-
         const outputPath = path.join(resolutionDir, 'playlist.m3u8');
+        
+        console.log(`🎬 Starting HLS transcode for ${resolution.name}:`, {
+            resolution: resolution,
+            resolutionDir,
+            outputPath,
+            inputFile: LOCAL_SOURCE_VIDEO
+        });
 
-        ffmpeg()
-            .input(LOCAL_SOURCE_VIDEO)
-            .videoFilter(`scale=${resolution.width}:${resolution.height}`)
-            .videoCodec('libx264')
-            .audioCodec('aac')
-            .addOption('-b:v', resolution.bv)
-            .addOption('-b:a', resolution.ba)
-            .addOption('-f', 'hls')
-            .addOption('-hls_time', '10')
-            .addOption('-hls_list_size', '0')
-            .addOption('-hls_segment_filename', path.join(resolutionDir, 'segment%03d.ts'))
-            .output(outputPath)
-            .on('start', () => console.log(`Starting HLS transcode for ${resolution.name}...`))
-            .on('end', () => {
-                console.log(`Finished HLS transcode for ${resolution.name}.`);
-                resolve();
-            })
-            .on('error', (err) => reject(new Error(`FFmpeg error for ${resolution.name}: ${err.message}`)))
-            .run();
+        // Create the resolution directory
+        fs.mkdir(resolutionDir, { recursive: true }).then(() => {
+            console.log(`📁 Created directory for ${resolution.name}:`, resolutionDir);
+            
+            ffmpeg()
+                .input(LOCAL_SOURCE_VIDEO)
+                .videoFilter(`scale=${resolution.width}:${resolution.height}`)
+                .videoCodec('libx264')
+                .audioCodec('aac')
+                .addOption('-b:v', resolution.bv)
+                .addOption('-b:a', resolution.ba)
+                .addOption('-f', 'hls')
+                .addOption('-hls_time', '10')
+                .addOption('-hls_list_size', '0')
+                .addOption('-hls_segment_filename', path.join(resolutionDir, 'segment%03d.ts'))
+                .output(outputPath)
+                .on('start', (commandLine) => {
+                    console.log(`🚀 FFmpeg command started for ${resolution.name}:`, {
+                        resolution: resolution.name,
+                        commandLine: commandLine
+                    });
+                })
+                .on('progress', (progress) => {
+                    if (progress.percent) {
+                        console.log(`⏳ ${resolution.name} transcode progress: ${Math.round(progress.percent)}%`, {
+                            frames: progress.frames,
+                            currentFps: progress.currentFps,
+                            currentKbps: progress.currentKbps,
+                            targetSize: progress.targetSize,
+                            timemark: progress.timemark
+                        });
+                    }
+                })
+                .on('end', () => {
+                    console.log(`✅ Finished HLS transcode for ${resolution.name}:`, {
+                        resolution: resolution.name,
+                        outputPath,
+                        resolutionDir
+                    });
+                    resolve();
+                })
+                .on('error', (err) => {
+                    console.error(`❌ FFmpeg error for ${resolution.name}:`, {
+                        resolution: resolution.name,
+                        error: err.message,
+                        errorStack: err.stack,
+                        outputPath,
+                        inputFile: LOCAL_SOURCE_VIDEO
+                    });
+                    reject(new Error(`FFmpeg error for ${resolution.name}: ${err.message}`));
+                })
+                .run();
+        }).catch(reject);
     });
 }
 
