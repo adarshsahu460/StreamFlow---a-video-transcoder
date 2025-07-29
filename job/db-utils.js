@@ -24,6 +24,7 @@ async function updateVideoMetadata(videoId, updates) {
         videoId
       },
       UpdateExpression: buildUpdateExpression(updates),
+      ExpressionAttributeNames: buildExpressionAttributeNames(updates),
       ExpressionAttributeValues: buildExpressionAttributeValues(updates),
       ReturnValues: 'UPDATED_NEW'
     });
@@ -64,11 +65,27 @@ function buildUpdateExpression(updates) {
   let expression = 'SET ';
 
   Object.keys(updates).forEach(key => {
-    expressions.push(`${key} = :${key}`);
+    // Use attribute names for reserved keywords
+    expressions.push(`#${key} = :${key}`);
   });
 
   expression += expressions.join(', ');
   return expression;
+}
+
+/**
+ * Builds the ExpressionAttributeNames for DynamoDB reserved keywords
+ */
+function buildExpressionAttributeNames(updates) {
+  const names = {};
+  const reservedKeywords = ['status', 'size', 'type', 'data', 'name', 'value'];
+
+  Object.keys(updates).forEach(key => {
+    // Always use attribute names for safety
+    names[`#${key}`] = key;
+  });
+
+  return names;
 }
 
 /**

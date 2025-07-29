@@ -39,7 +39,9 @@ const VideoCard = ({ video, onUsernameClick }: VideoCardProps) => {
   
   const handleCardClick = () => {
     if (!isProcessing) {
-      navigate(`/video/${video.id}`);
+      // URL encode the video ID to handle special characters like ###
+      const encodedVideoId = encodeURIComponent(video.id);
+      navigate(`/video/${encodedVideoId}`);
     }
   };
   

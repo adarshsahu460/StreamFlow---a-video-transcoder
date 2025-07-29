@@ -19,7 +19,7 @@
     }
   ],
   "executionRoleArn": "arn:aws:iam::534613823192:role/ecsTaskExecutionRole",
-  "taskRoleArn": "arn:aws:iam::534613823192:role/videoTranscoderTaskRole",
+  "taskRoleArn": "arn:aws:iam::534613823192:role/ECSTask-VideoTranscoder-Role",
   "networkMode": "awsvpc",
   "requiresCompatibilities": [
     "FARGATE"

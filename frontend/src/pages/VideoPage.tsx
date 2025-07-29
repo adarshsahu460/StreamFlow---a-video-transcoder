@@ -30,10 +30,11 @@ const VideoPage = () => {
     
     loadVideo()
     
-    // If video is still processing, refresh the page every 10 seconds
+    // If video is still processing or status is undefined but has playbackUrl, refresh the page every 10 seconds
     let refreshInterval: ReturnType<typeof setInterval> | null = null;
     
-    if (video?.status !== 'COMPLETED') {
+    // Only set up interval if video is processing (has a status that's not COMPLETED)
+    if (video?.status && video.status !== 'COMPLETED') {
       refreshInterval = setInterval(loadVideo, 10000);
     }
     
@@ -48,11 +49,15 @@ const VideoPage = () => {
   }
   
   // Check if video is still processing
-  const isProcessing = video && video.status !== 'COMPLETED';
+  // If status is undefined (not present in API response), assume video is COMPLETED
+  const isProcessing = video && video.status && video.status !== 'COMPLETED';
   
   // Get status message based on video status
   const getStatusMessage = () => {
     if (!video) return '';
+    
+    // If status is not present, video is completed
+    if (!video.status) return 'Video is ready for playback.';
     
     switch (video.status) {
       case 'PENDING':

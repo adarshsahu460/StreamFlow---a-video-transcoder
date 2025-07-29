@@ -71,9 +71,9 @@ async function main() {
         await uploadDirectoryToS3(LOCAL_OUTPUT_DIR, DESTINATION_BUCKET, outputPrefix);
         console.log(`✅ All assets uploaded to s3://${DESTINATION_BUCKET}/${outputPrefix}`);
 
-        // Extract video thumbnail URL (first frame from sprite)
-        const thumbnailUrl = `https://${DESTINATION_BUCKET}.s3.amazonaws.com/${outputPrefix}sprite.jpg#xywh=0,0,160,90`;
-        const masterPlaylistUrl = `https://${DESTINATION_BUCKET}.s3.amazonaws.com/${outputPrefix}master.m3u8`;
+        // Extract video thumbnail URL (first frame from sprite) - Use path-style URLs to avoid SSL issues
+        const thumbnailUrl = `https://s3.ap-south-1.amazonaws.com/${DESTINATION_BUCKET}/${outputPrefix}sprite.jpg#xywh=0,0,160,90`;
+        const masterPlaylistUrl = `https://s3.ap-south-1.amazonaws.com/${DESTINATION_BUCKET}/${outputPrefix}master.m3u8`;
         
         console.log('📊 Generated final URLs:', {
             thumbnailUrl,
@@ -327,6 +327,7 @@ async function uploadDirectoryToS3(dirPath, bucket, prefix) {
                 Bucket: bucket,
                 Key: s3Key,
                 Body: createReadStream(localFilePath),
+                ACL: 'public-read', // Add public-read ACL to make files publicly accessible
             }));
         });
 
@@ -349,7 +350,8 @@ async function createAndUploadManifest(prefix, status, errorMessage = null, thum
         Bucket: DESTINATION_BUCKET,
         Key: `${prefix}manifest.json`,
         Body: JSON.stringify(manifestContent, null, 2), 
-        ContentType: 'application/json'
+        ContentType: 'application/json',
+        ACL: 'public-read' // Add public-read ACL
     });
 
     await s3Client.send(command);

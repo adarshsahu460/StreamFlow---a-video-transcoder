@@ -39,11 +39,16 @@ provider:
         - Effect: Allow
           Action:
             - ecs:RunTask
-          Resource: ${self:custom.taskDefinitionArn}
+          Resource: 
+            - arn:aws:ecs:${self:provider.region}:${aws:accountId}:task-definition/${self:custom.taskDefinition}
+            - arn:aws:ecs:${self:provider.region}:${aws:accountId}:task-definition/${self:custom.taskDefinition}:*
+            - arn:aws:ecs:${self:provider.region}:${aws:accountId}:cluster/${self:custom.clusterName}
         - Effect: Allow
           Action:
             - iam:PassRole
-          Resource: "*"
+          Resource: 
+            - "arn:aws:iam::${aws:accountId}:role/ecsTaskExecutionRole"
+            - "arn:aws:iam::${aws:accountId}:role/ECSTask-VideoTranscoder-Role"
 
 custom:
   destinationBucket: ${param:bucket, 'your-destination-bucket'}

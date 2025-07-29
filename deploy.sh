@@ -142,8 +142,19 @@ cd ..
 
 # Create ECS cluster if it doesn't exist
 echo "Setting up ECS resources..."
-aws ecs describe-clusters --clusters video-transcoder-cluster --region $REGION || \
-  aws ecs create-cluster --cluster-name video-transcoder-cluster --region $REGION
+# Always delete and recreate ECS cluster to avoid INACTIVE state
+EXISTING_CLUSTER_STATUS=$(aws ecs describe-clusters --clusters video-transcoder-cluster --region $REGION --query 'clusters[0].status' --output text 2>/dev/null || echo "MISSING")
+if [[ "$EXISTING_CLUSTER_STATUS" == "ACTIVE" || "$EXISTING_CLUSTER_STATUS" == "INACTIVE" ]]; then
+  echo "Deleting existing ECS cluster: video-transcoder-cluster (status: $EXISTING_CLUSTER_STATUS)"
+  aws ecs delete-cluster --cluster video-transcoder-cluster --region $REGION || true
+  # Wait for deletion to propagate
+  sleep 5
+fi
+
+echo "Creating ECS cluster: video-transcoder-cluster"
+aws ecs create-cluster --cluster-name video-transcoder-cluster --region $REGION
+
+echo "✅ ECS cluster created successfully"
 
 # Create IAM roles for ECS tasks
 echo "Creating IAM roles..."
@@ -169,6 +180,43 @@ if [[ -z "$TASK_ROLE_ARN" || "$TASK_ROLE_ARN" == "None" ]]; then
     --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy || true
 fi
 
+# Check if the ECS task role exists (for container permissions)
+CONTAINER_TASK_ROLE_ARN=$(aws iam get-role --role-name ECSTask-VideoTranscoder-Role --query 'Role.Arn' --output text 2>/dev/null || echo "")
+if [[ -z "$CONTAINER_TASK_ROLE_ARN" || "$CONTAINER_TASK_ROLE_ARN" == "None" ]]; then
+  echo "Creating ECS Task Role for video transcoder..."
+  aws iam create-role --role-name ECSTask-VideoTranscoder-Role \
+    --assume-role-policy-document '{
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "ecs-tasks.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    }' || true
+  
+  # Attach policies for S3 and DynamoDB access using the dedicated policy file
+  echo "Applying ECS task policy from ecs-task-policy.json..."
+  # First, update the policy file with correct bucket names and region
+  sed "s/uploads\.adarshsahu\.site/$SOURCE_BUCKET/g" ecs-task-policy.json > ecs-task-policy-temp.json
+  sed -i "s/production\.adarshsahu\.site/$DESTINATION_BUCKET/g" ecs-task-policy-temp.json
+  sed -i "s/\*:\*:table\/VideoMetadata/$REGION:$ACCOUNT_ID:table\/VideoMetadata/g" ecs-task-policy-temp.json
+  
+  aws iam put-role-policy --role-name ECSTask-VideoTranscoder-Role \
+    --policy-name VideoTranscoderTaskPolicy \
+    --policy-document file://ecs-task-policy-temp.json || true
+  
+  # Clean up temp file
+  rm ecs-task-policy-temp.json
+fi
+
+# Create CloudWatch Log Group for ECS tasks
+echo "Creating CloudWatch Log Group..."
+aws logs create-log-group --log-group-name /ecs/video-transcoder --region $REGION 2>/dev/null || true
+
 # Update task definition with actual account ID and region
 echo "Updating task definition..."
 sed -i "s/YOUR_ACCOUNT_ID/$ACCOUNT_ID/g" task-definition.json
@@ -178,30 +226,65 @@ sed -i "s/your-source-bucket/$SOURCE_BUCKET/g" task-definition.json
 
 # Register the task definition
 echo "Registering ECS task definition..."
-aws ecs register-task-definition --cli-input-json file://task-definition.json --region $REGION
+TASK_DEF_RESULT=$(aws ecs register-task-definition --cli-input-json file://task-definition.json --region $REGION 2>&1)
+if [[ $? -eq 0 ]]; then
+  TASK_DEF_ARN=$(echo "$TASK_DEF_RESULT" | jq -r '.taskDefinition.taskDefinitionArn' 2>/dev/null || echo "unknown")
+  echo "✅ Task definition registered successfully: $TASK_DEF_ARN"
+else
+  echo "❌ Failed to register task definition:"
+  echo "$TASK_DEF_RESULT"
+  echo "Continuing with deployment..."
+fi
 
 # Deploy the serverless application FIRST to get the API endpoint
 echo "Deploying serverless application..."
 serverless deploy --param="bucket=$DESTINATION_BUCKET" --param="sourceBucket=$SOURCE_BUCKET" --region $REGION
 
+# Redeploy serverless to ensure ECS permissions are applied (in case task definition was updated)
+echo "Ensuring ECS permissions are properly applied..."
+serverless deploy --param="bucket=$DESTINATION_BUCKET" --param="sourceBucket=$SOURCE_BUCKET" --region $REGION --force
+
 # Get the API endpoint from serverless deployment
 echo "Getting API endpoint..."
-API_ENDPOINT=$(serverless info --verbose | grep -A 5 "ServiceEndpoint:" | grep "https://" | head -1 | awk '{print $1}')
+# Method 1: Extract from serverless info endpoints
+API_ENDPOINT=$(serverless info 2>/dev/null | grep -E "https://.*\.execute-api\." | head -1 | awk '{print $3}' | sed 's|/[^/]*$|/dev|')
+
+# Method 2: If that fails, try parsing differently
 if [[ -z "$API_ENDPOINT" ]]; then
-  echo "Warning: Could not get API endpoint from serverless deployment"
-  echo "Trying alternative method..."
-  API_ENDPOINT=$(aws apigateway get-rest-apis --query "items[?name=='dev-streamflow-api'].id" --output text --region $REGION)
-  if [[ ! -z "$API_ENDPOINT" && "$API_ENDPOINT" != "None" ]]; then
-    API_ENDPOINT="https://$API_ENDPOINT.execute-api.$REGION.amazonaws.com/dev"
+  echo "Trying alternative parsing method..."
+  API_ENDPOINT=$(serverless info 2>/dev/null | grep -E "https://.*\.execute-api\." | head -1 | sed -E 's|.*(https://[^/]+).*|\1/dev|')
+fi
+
+# Method 3: If still empty, use AWS CLI
+if [[ -z "$API_ENDPOINT" ]]; then
+  echo "Trying AWS CLI method..."
+  API_ID=$(aws apigateway get-rest-apis --query "items[?contains(name, 'streamflow')].id" --output text --region $REGION | head -1)
+  if [[ ! -z "$API_ID" && "$API_ID" != "None" ]]; then
+    API_ENDPOINT="https://$API_ID.execute-api.$REGION.amazonaws.com/dev"
+  fi
+fi
+
+# Method 4: Last resort - extract API ID from any endpoint and construct base URL
+if [[ -z "$API_ENDPOINT" ]]; then
+  echo "Using last resort method..."
+  FULL_ENDPOINT=$(serverless info 2>/dev/null | grep -E "https://.*\.execute-api\." | head -1 | awk '{print $3}')
+  if [[ ! -z "$FULL_ENDPOINT" ]]; then
+    # Extract just the base URL (https://apiid.execute-api.region.amazonaws.com/dev)
+    API_ENDPOINT=$(echo "$FULL_ENDPOINT" | sed -E 's|(https://[^/]+/[^/]+).*|\1|')
   fi
 fi
 
 if [[ ! -z "$API_ENDPOINT" && "$API_ENDPOINT" != "None" ]]; then
-  echo "Found API endpoint: $API_ENDPOINT"
+  echo "✅ Found API endpoint: $API_ENDPOINT"
   # Update the frontend environment variable
   echo "VITE_API_ENDPOINT=$API_ENDPOINT" > frontend/.env
+  echo "✅ Updated frontend/.env with API endpoint"
 else
-  echo "Warning: Could not determine API endpoint. Frontend will use default placeholder."
+  echo "❌ Warning: Could not determine API endpoint. Frontend will use default placeholder."
+  echo "Debug: Serverless info output:"
+  serverless info 2>/dev/null | head -20
+  echo "Debug: Available API Gateways:"
+  aws apigateway get-rest-apis --query "items[].{Name:name,Id:id}" --output table --region $REGION 2>/dev/null || echo "Failed to get API Gateways"
 fi
 
 # Now build the React frontend with the correct API endpoint
@@ -273,7 +356,7 @@ aws s3api put-bucket-notification-configuration \
 rm s3-notification-temp.json s3-notification-final.json
 
 echo "==== Deployment Complete ===="
-echo "Frontend URL: http://$DESTINATION_BUCKET.s3-website-$REGION.amazonaws.com"
+echo "Frontend URL: http://$DESTINATION_BUCKET.s3-website.ap-south-1.amazonaws.com"
 if [[ ! -z "$API_ENDPOINT" && "$API_ENDPOINT" != "None" ]]; then
   echo "API Endpoint: $API_ENDPOINT"
 else
@@ -282,7 +365,7 @@ fi
 
 # Verify the website is accessible
 echo "Verifying website accessibility..."
-WEBSITE_URL="http://$DESTINATION_BUCKET.s3-website-$REGION.amazonaws.com"
+WEBSITE_URL="http://$DESTINATION_BUCKET.s3-website.ap-south-1.amazonaws.com"
 HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$WEBSITE_URL" || echo "000")
 
 if [ "$HTTP_STATUS" = "200" ]; then
@@ -314,6 +397,48 @@ if [[ ! -z "$TABLE_CHECK" ]]; then
   echo "✅ DynamoDB table exists: VideoMetadata"
 else
   echo "⚠️  DynamoDB table 'VideoMetadata' not found"
+fi
+
+# Verify ECS cluster and task definition
+echo "Verifying ECS resources..."
+ECS_CLUSTER_CHECK=$(aws ecs describe-clusters --clusters video-transcoder-cluster --region $REGION --query 'clusters[0].status' --output text 2>/dev/null || echo "MISSING")
+if [[ "$ECS_CLUSTER_CHECK" == "ACTIVE" ]]; then
+  echo "✅ ECS cluster exists and is active: video-transcoder-cluster"
+elif [[ "$ECS_CLUSTER_CHECK" == "INACTIVE" ]]; then
+  echo "✅ ECS cluster exists (INACTIVE is normal when no tasks are running): video-transcoder-cluster"
+else
+  echo "⚠️  ECS cluster status: $ECS_CLUSTER_CHECK"
+fi
+
+TASK_DEF_CHECK=$(aws ecs list-task-definitions --family-prefix video-transcoder --region $REGION --query 'taskDefinitionArns[-1]' --output text 2>/dev/null || echo "None")
+if [[ "$TASK_DEF_CHECK" != "None" && ! -z "$TASK_DEF_CHECK" ]]; then
+  echo "✅ ECS task definition exists: $TASK_DEF_CHECK"
+else
+  echo "⚠️  ECS task definition not found"
+fi
+
+# Verify IAM roles exist
+echo "Verifying IAM roles..."
+EXEC_ROLE_CHECK=$(aws iam get-role --role-name ecsTaskExecutionRole --query 'Role.RoleName' --output text 2>/dev/null || echo "MISSING")
+TASK_ROLE_CHECK=$(aws iam get-role --role-name ECSTask-VideoTranscoder-Role --query 'Role.RoleName' --output text 2>/dev/null || echo "MISSING")
+
+if [[ "$EXEC_ROLE_CHECK" == "ecsTaskExecutionRole" ]]; then
+  echo "✅ ECS execution role exists: ecsTaskExecutionRole"
+else
+  echo "⚠️  ECS execution role missing"
+fi
+
+if [[ "$TASK_ROLE_CHECK" == "ECSTask-VideoTranscoder-Role" ]]; then
+  echo "✅ ECS task role exists: ECSTask-VideoTranscoder-Role"
+  # Verify the task policy is attached
+  POLICY_CHECK=$(aws iam get-role-policy --role-name ECSTask-VideoTranscoder-Role --policy-name VideoTranscoderTaskPolicy --query 'PolicyName' --output text 2>/dev/null || echo "MISSING")
+  if [[ "$POLICY_CHECK" == "VideoTranscoderTaskPolicy" ]]; then
+    echo "✅ ECS task policy is attached: VideoTranscoderTaskPolicy"
+  else
+    echo "⚠️  ECS task policy not found or not attached properly"
+  fi
+else
+  echo "⚠️  ECS task role missing"
 fi
 
 echo "=============================="

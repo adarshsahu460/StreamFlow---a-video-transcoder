@@ -96,7 +96,7 @@ export const getVideos: APIGatewayProxyHandler = async (event) => {
 
 export const getVideo: APIGatewayProxyHandler = async (event) => {
   try {
-    const videoId = event.pathParameters?.id;
+    let videoId = event.pathParameters?.id;
     
     if (!videoId) {
       return {
@@ -105,6 +105,10 @@ export const getVideo: APIGatewayProxyHandler = async (event) => {
         body: JSON.stringify({ message: 'Video ID is required' })
       };
     }
+
+    // URL decode the video ID to handle special characters like ###
+    videoId = decodeURIComponent(videoId);
+    console.log('🔍 getVideo called with videoId:', videoId);
 
     const getCommand = new GetCommand({
       TableName: VIDEO_TABLE_NAME,
@@ -215,7 +219,8 @@ export const getUploadUrl: APIGatewayProxyHandler = async (event) => {
     const command = new PutObjectCommand({
       Bucket: SOURCE_BUCKET,
       Key: s3Key,
-      ContentType: fileType
+      ContentType: fileType,
+      ACL: 'public-read' // Add public-read ACL to make video accessible
     });
     
     console.log('🔐 Creating presigned URL for upload...');

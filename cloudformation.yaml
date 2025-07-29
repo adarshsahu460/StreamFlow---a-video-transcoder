@@ -11,7 +11,6 @@ Parameters:
     Description: Name of the destination bucket where processed videos are stored
 
 Resources:
-  # DynamoDB Table for Video Metadata
   VideoMetadataTable:
     Type: AWS::DynamoDB::Table
     Properties:

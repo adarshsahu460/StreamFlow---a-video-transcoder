@@ -94,7 +94,9 @@ export const fetchVideo = async (id: string): Promise<Video> => {
     return video;
   }
   
-  const response = await fetch(`${API_ENDPOINT}/videos/${id}`);
+  // URL encode the video ID to handle special characters like ###
+  const encodedId = encodeURIComponent(id);
+  const response = await fetch(`${API_ENDPOINT}/videos/${encodedId}`);
   
   if (!response.ok) {
     throw new Error(`API error: ${response.status}`);

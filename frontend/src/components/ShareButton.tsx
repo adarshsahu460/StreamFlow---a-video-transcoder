@@ -9,8 +9,9 @@ const ShareButton = ({ videoId, title }: ShareButtonProps) => {
   const [copied, setCopied] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   
-  // Generate the shareable URL
-  const shareUrl = `${window.location.origin}/video/${videoId}`;
+  // Generate the shareable URL with properly encoded video ID
+  const encodedVideoId = encodeURIComponent(videoId);
+  const shareUrl = `${window.location.origin}/video/${encodedVideoId}`;
   
   // Handle copy to clipboard
   const handleCopyLink = async () => {

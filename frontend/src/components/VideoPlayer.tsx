@@ -39,15 +39,28 @@ const VideoPlayer = ({ playbackUrl, thumbnailsUrl, className = '' }: VideoPlayer
         }
       })
       
+      // Properly encode the URLs to handle special characters like ###
+      // Use a more robust encoding approach
+      const encodedPlaybackUrl = playbackUrl.replace(/#/g, '%23');
+      
+      console.log('[StreamFlow] Original playback URL:', playbackUrl);
+      console.log('[StreamFlow] Encoded playback URL:', encodedPlaybackUrl);
+      
       playerRef.current.src({
-        src: playbackUrl,
+        src: encodedPlaybackUrl,
         type: 'application/x-mpegURL'
       })
       
       // Add thumbnails if available
       if (thumbnailsUrl && (playerRef.current as any).vttThumbnails) {
+        // Properly encode the thumbnails URL
+        const encodedThumbnailsUrl = thumbnailsUrl.replace(/#/g, '%23');
+        
+        console.log('[StreamFlow] Original thumbnails URL:', thumbnailsUrl);
+        console.log('[StreamFlow] Encoded thumbnails URL:', encodedThumbnailsUrl);
+        
         (playerRef.current as any).vttThumbnails({
-          src: thumbnailsUrl
+          src: encodedThumbnailsUrl
         })
       }
       
