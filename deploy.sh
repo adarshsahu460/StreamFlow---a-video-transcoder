@@ -120,10 +120,6 @@ cd api && npm run build && cd ..
 echo "Building and pushing Docker image..."
 cd job
 
-# Update the task definition with the correct account and region
-sed -i "s/YOUR_ACCOUNT_ID/$ACCOUNT_ID/g" ../task-definition.json
-sed -i "s/YOUR_REGION/$REGION/g" ../task-definition.json
-
 # Build Docker image
 docker build -t video-transcoder .
 
@@ -217,13 +213,6 @@ fi
 echo "Creating CloudWatch Log Group..."
 aws logs create-log-group --log-group-name /ecs/video-transcoder --region $REGION 2>/dev/null || true
 
-# Update task definition with actual account ID and region
-echo "Updating task definition..."
-sed -i "s/YOUR_ACCOUNT_ID/$ACCOUNT_ID/g" task-definition.json
-sed -i "s/YOUR_REGION/$REGION/g" task-definition.json
-sed -i "s/your-destination-bucket/$DESTINATION_BUCKET/g" task-definition.json
-sed -i "s/your-source-bucket/$SOURCE_BUCKET/g" task-definition.json
-
 # Register the task definition
 echo "Registering ECS task definition..."
 TASK_DEF_RESULT=$(aws ecs register-task-definition --cli-input-json file://task-definition.json --region $REGION 2>&1)
@@ -241,38 +230,38 @@ echo "Deploying serverless application..."
 serverless deploy --param="bucket=$DESTINATION_BUCKET" --param="sourceBucket=$SOURCE_BUCKET" --region $REGION
 
 # Redeploy serverless to ensure ECS permissions are applied (in case task definition was updated)
-echo "Ensuring ECS permissions are properly applied..."
-serverless deploy --param="bucket=$DESTINATION_BUCKET" --param="sourceBucket=$SOURCE_BUCKET" --region $REGION --force
+# echo "Ensuring ECS permissions are properly applied..."
+# serverless deploy --param="bucket=$DESTINATION_BUCKET" --param="sourceBucket=$SOURCE_BUCKET" --region $REGION --force
 
 # Get the API endpoint from serverless deployment
 echo "Getting API endpoint..."
 # Method 1: Extract from serverless info endpoints
-API_ENDPOINT=$(serverless info 2>/dev/null | grep -E "https://.*\.execute-api\." | head -1 | awk '{print $3}' | sed 's|/[^/]*$|/dev|')
+# API_ENDPOINT=$(serverless info 2>/dev/null | grep -E "https://.*\.execute-api\." | head -1 | awk '{print $3}' | sed 's|/[^/]*$|/dev|')
 
-# Method 2: If that fails, try parsing differently
-if [[ -z "$API_ENDPOINT" ]]; then
-  echo "Trying alternative parsing method..."
-  API_ENDPOINT=$(serverless info 2>/dev/null | grep -E "https://.*\.execute-api\." | head -1 | sed -E 's|.*(https://[^/]+).*|\1/dev|')
-fi
+# # Method 2: If that fails, try parsing differently
+# if [[ -z "$API_ENDPOINT" ]]; then
+#   echo "Trying alternative parsing method..."
+#   API_ENDPOINT=$(serverless info 2>/dev/null | grep -E "https://.*\.execute-api\." | head -1 | sed -E 's|.*(https://[^/]+).*|\1/dev|')
+# fi
 
 # Method 3: If still empty, use AWS CLI
-if [[ -z "$API_ENDPOINT" ]]; then
-  echo "Trying AWS CLI method..."
-  API_ID=$(aws apigateway get-rest-apis --query "items[?contains(name, 'streamflow')].id" --output text --region $REGION | head -1)
-  if [[ ! -z "$API_ID" && "$API_ID" != "None" ]]; then
-    API_ENDPOINT="https://$API_ID.execute-api.$REGION.amazonaws.com/dev"
-  fi
+# if [[ -z "$API_ENDPOINT" ]]; then
+#   echo "Trying AWS CLI method..."
+API_ID=$(aws apigateway get-rest-apis --query "items[?contains(name, 'streamflow')].id" --output text --region $REGION | head -1)
+if [[ ! -z "$API_ID" && "$API_ID" != "None" ]]; then
+  API_ENDPOINT="https://$API_ID.execute-api.$REGION.amazonaws.com/dev"
 fi
+# fi
 
-# Method 4: Last resort - extract API ID from any endpoint and construct base URL
-if [[ -z "$API_ENDPOINT" ]]; then
-  echo "Using last resort method..."
-  FULL_ENDPOINT=$(serverless info 2>/dev/null | grep -E "https://.*\.execute-api\." | head -1 | awk '{print $3}')
-  if [[ ! -z "$FULL_ENDPOINT" ]]; then
-    # Extract just the base URL (https://apiid.execute-api.region.amazonaws.com/dev)
-    API_ENDPOINT=$(echo "$FULL_ENDPOINT" | sed -E 's|(https://[^/]+/[^/]+).*|\1|')
-  fi
-fi
+# # Method 4: Last resort - extract API ID from any endpoint and construct base URL
+# if [[ -z "$API_ENDPOINT" ]]; then
+#   echo "Using last resort method..."
+#   FULL_ENDPOINT=$(serverless info 2>/dev/null | grep -E "https://.*\.execute-api\." | head -1 | awk '{print $3}')
+#   if [[ ! -z "$FULL_ENDPOINT" ]]; then
+#     # Extract just the base URL (https://apiid.execute-api.region.amazonaws.com/dev)
+#     API_ENDPOINT=$(echo "$FULL_ENDPOINT" | sed -E 's|(https://[^/]+/[^/]+).*|\1|')
+#   fi
+# fi
 
 if [[ ! -z "$API_ENDPOINT" && "$API_ENDPOINT" != "None" ]]; then
   echo "✅ Found API endpoint: $API_ENDPOINT"
@@ -302,31 +291,31 @@ echo "Uploading frontend..."
 aws s3 cp frontend/dist/ s3://$DESTINATION_BUCKET/ --recursive
 
 # Create and apply bucket policy for public read access
-echo "Creating bucket policy for public access..."
-cat > bucket-policy-temp.json << EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "PublicReadGetObject",
-      "Effect": "Allow",
-      "Principal": "*",
-      "Action": "s3:GetObject",
-      "Resource": "arn:aws:s3:::$DESTINATION_BUCKET/*"
-    }
-  ]
-}
-EOF
+# echo "Creating bucket policy for public access..."
+# cat > bucket-policy-temp.json << EOF
+# {
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Sid": "PublicReadGetObject",
+#       "Effect": "Allow",
+#       "Principal": "*",
+#       "Action": "s3:GetObject",
+#       "Resource": "arn:aws:s3:::$DESTINATION_BUCKET/*"
+#     }
+#   ]
+# }
+# EOF
 
 # Apply the bucket policy
 echo "Applying bucket policy..."
-aws s3api put-bucket-policy --bucket $DESTINATION_BUCKET --policy file://bucket-policy-temp.json
-
+# aws s3api put-bucket-policy --bucket $DESTINATION_BUCKET --policy file://bucket-policy-temp.json
+aws s3api put-bucket-policy --bucket $DESTINATION_BUCKET --policy file://bucket-policy.json
 # Clean up temporary policy file
-rm bucket-policy-temp.json
+# rm bucket-policy-temp.json
 
-# Configure SQS Policy for S3 notifications
-echo "Configuring SQS policy for S3 notifications..."
+# Configure SQS Policy for S3 
+echo "Configuring SQS policy for S3 notificanotificationstions..."
 QUEUE_URL=$(aws sqs get-queue-url --queue-name video-upload-queue --region $REGION --query 'QueueUrl' --output text 2>/dev/null || echo "")
 
 if [[ -z "$QUEUE_URL" ]]; then
@@ -335,25 +324,18 @@ if [[ -z "$QUEUE_URL" ]]; then
 else
   echo "Applying SQS policy to allow S3 notifications..."
   # Update SQS policy with correct bucket name
-  sed "s/temp-videos\.adarshsahu\.site/$SOURCE_BUCKET/g" sqs-attributes.json > sqs-attributes-temp.json
-  aws sqs set-queue-attributes --queue-url "$QUEUE_URL" --attributes file://sqs-attributes-temp.json || true
-  rm sqs-attributes-temp.json
+  aws sqs set-queue-attributes --queue-url "$QUEUE_URL" --attributes file://sqs-attributes.json || true
+  # Wait for policy to propagate
+  echo "Waiting for SQS policy to propagate..."
+  sleep 10
 fi
 
 # Configure S3 bucket notifications
 echo "Configuring S3 bucket notifications..."
-# Update notification config with correct queue ARN
-QUEUE_ARN="arn:aws:sqs:$REGION:$ACCOUNT_ID:video-upload-queue"
-sed "s|arn:aws:sqs:ap-south-1:534613823192:video-upload-queue|$QUEUE_ARN|g" s3-notification-config.json > s3-notification-temp.json
-sed "s/temp-videos\.adarshsahu\.site/$SOURCE_BUCKET/g" s3-notification-temp.json > s3-notification-final.json
-
 # Apply S3 notification configuration
 aws s3api put-bucket-notification-configuration \
   --bucket $SOURCE_BUCKET \
-  --notification-configuration file://s3-notification-final.json || true
-
-# Clean up temp files
-rm s3-notification-temp.json s3-notification-final.json
+  --notification-configuration file://s3-notification-config.json || true
 
 echo "==== Deployment Complete ===="
 echo "Frontend URL: http://$DESTINATION_BUCKET.s3-website.ap-south-1.amazonaws.com"

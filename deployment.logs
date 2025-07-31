@@ -1,3 +1,4 @@
+adarsh@YOGA:~/Projects/StreamFlow---a-video-transcoder$ ./quick-deploy.sh 
 🚀 Starting StreamFlow deployment with default configuration...
 Checking required tools...
 ✅ All required tools are available
@@ -12,7 +13,7 @@ Installing API dependencies...
 npm warn Unknown builtin config "globalignorefile". This will stop working in the next major version of npm.
 npm warn deprecated querystring@0.2.0: The querystring API is considered Legacy. new code should use the URLSearchParams API instead.
 
-added 160 packages, and audited 188 packages in 2s
+added 187 packages, and audited 188 packages in 2s
 
 22 packages are looking for funding
   run `npm fund` for details
@@ -31,7 +32,7 @@ found 0 vulnerabilities
 Installing Job dependencies...
 npm warn Unknown builtin config "globalignorefile". This will stop working in the next major version of npm.
 
-up to date, audited 148 packages in 914ms
+up to date, audited 148 packages in 1s
 
 6 packages are looking for funding
   run `npm fund` for details
@@ -77,27 +78,27 @@ npm warn Unknown builtin config "globalignorefile". This will stop working in th
 > tsc
 
 Building and pushing Docker image...
-[+] Building 2.6s (14/14) FINISHED                               docker:default
- => [internal] load build definition from Dockerfile                       0.0s
- => => transferring dockerfile: 233B                                       0.0s
- => [internal] load metadata for docker.io/library/node:18-alpine          2.4s
- => [internal] load .dockerignore                                          0.0s
- => => transferring context: 2B                                            0.0s
- => [1/9] FROM docker.io/library/node:18-alpine@sha256:8d6421d663b4c28fd3  0.0s
- => [internal] load build context                                          0.1s
- => => transferring context: 908.50kB                                      0.1s
- => CACHED [2/9] RUN apk update                                            0.0s
- => CACHED [3/9] RUN apk upgrade                                           0.0s
- => CACHED [4/9] RUN apk add --no-cache ffmpeg                             0.0s
- => CACHED [5/9] WORKDIR /app                                              0.0s
- => CACHED [6/9] COPY package.json .                                       0.0s
- => CACHED [7/9] COPY package-lock.json .                                  0.0s
- => CACHED [8/9] RUN npm install                                           0.0s
- => CACHED [9/9] COPY . .                                                  0.0s
- => exporting to image                                                     0.0s
- => => exporting layers                                                    0.0s
- => => writing image sha256:e84276ed0c80d531a1345980cf76cf73f2c1f76ac341d  0.0s
- => => naming to docker.io/library/video-transcoder                        0.0s
+[+] Building 2.5s (14/14) FINISHED                                                                                        docker:default
+ => [internal] load build definition from Dockerfile                                                                                0.0s
+ => => transferring dockerfile: 233B                                                                                                0.0s
+ => [internal] load metadata for docker.io/library/node:18-alpine                                                                   2.2s
+ => [internal] load .dockerignore                                                                                                   0.0s
+ => => transferring context: 2B                                                                                                     0.0s
+ => [1/9] FROM docker.io/library/node:18-alpine@sha256:8d6421d663b4c28fd3ebc498332f249011d118945588d0a35cb9bc4b8ca09d9e             0.0s
+ => [internal] load build context                                                                                                   0.2s
+ => => transferring context: 908.50kB                                                                                               0.1s
+ => CACHED [2/9] RUN apk update                                                                                                     0.0s
+ => CACHED [3/9] RUN apk upgrade                                                                                                    0.0s
+ => CACHED [4/9] RUN apk add --no-cache ffmpeg                                                                                      0.0s
+ => CACHED [5/9] WORKDIR /app                                                                                                       0.0s
+ => CACHED [6/9] COPY package.json .                                                                                                0.0s
+ => CACHED [7/9] COPY package-lock.json .                                                                                           0.0s
+ => CACHED [8/9] RUN npm install                                                                                                    0.0s
+ => CACHED [9/9] COPY . .                                                                                                           0.0s
+ => exporting to image                                                                                                              0.0s
+ => => exporting layers                                                                                                             0.0s
+ => => writing image sha256:db65a8d38512592a535810ef10aab7f6f0566f34415f324ad762235e3811fa07                                        0.0s
+ => => naming to docker.io/library/video-transcoder                                                                                 0.0s
 
 An error occurred (RepositoryNotFoundException) when calling the DescribeRepositories operation: The repository with name 'video-transcoder' does not exist in the registry with id '534613823192'
 {
@@ -106,7 +107,7 @@ An error occurred (RepositoryNotFoundException) when calling the DescribeReposit
         "registryId": "534613823192",
         "repositoryName": "video-transcoder",
         "repositoryUri": "534613823192.dkr.ecr.ap-south-1.amazonaws.com/video-transcoder",
-        "createdAt": "2025-07-29T17:05:34.798000+05:30",
+        "createdAt": "2025-07-31T10:53:50.419000+05:30",
         "imageTagMutability": "MUTABLE",
         "imageScanningConfiguration": {
             "scanOnPush": false
@@ -123,7 +124,7 @@ https://docs.docker.com/go/credential-store/
 
 Login Succeeded
 The push refers to repository [534613823192.dkr.ecr.ap-south-1.amazonaws.com/video-transcoder]
-66b6150da27d: Pushed 
+d6207232e2bc: Pushed 
 d51cbb667fb0: Pushed 
 9ea826507559: Pushed 
 80d6ce7045fe: Pushed 
@@ -135,7 +136,7 @@ d51cbb667fb0: Pushed
 f3b40b0cdb1c: Pushed 
 0b1f26057bd0: Pushed 
 08000c18d16d: Pushed 
-latest: digest: sha256:3878b077a6d6b976e8cea12081b605ed931835e985649443595dc2c63b125cce size: 2836
+latest: digest: sha256:a7065036ae4448d403d59292128d0c34da8ec382f5086870fa56385007adac64 size: 2836
 Setting up ECS resources...
 Deleting existing ECS cluster: video-transcoder-cluster (status: INACTIVE)
 {
@@ -189,9 +190,9 @@ Creating ECS Task Execution Role...
     "Role": {
         "Path": "/",
         "RoleName": "ecsTaskExecutionRole",
-        "RoleId": "AROAXY6LXR3MM6F43KZL4",
+        "RoleId": "AROAXY6LXR3MBGYXEYSPG",
         "Arn": "arn:aws:iam::534613823192:role/ecsTaskExecutionRole",
-        "CreateDate": "2025-07-29T11:38:48+00:00",
+        "CreateDate": "2025-07-31T05:24:30+00:00",
         "AssumeRolePolicyDocument": {
             "Version": "2012-10-17",
             "Statement": [
@@ -206,36 +207,20 @@ Creating ECS Task Execution Role...
         }
     }
 }
+^[[Bq
 Creating CloudWatch Log Group...
-Updating task definition...
 Registering ECS task definition...
-✅ Task definition registered successfully: arn:aws:ecs:ap-south-1:534613823192:task-definition/video-transcoder:17
+✅ Task definition registered successfully: arn:aws:ecs:ap-south-1:534613823192:task-definition/video-transcoder:24
 Deploying serverless application...
 
 Deploying "streamflow" to stage "dev" (ap-south-1)
 
-✔ Service deployed to stack streamflow-dev (164s)
+✔ Service deployed to stack streamflow-dev (119s)
 
 endpoints:
-  GET - https://4zwdvrjvyk.execute-api.ap-south-1.amazonaws.com/dev/videos
-  GET - https://4zwdvrjvyk.execute-api.ap-south-1.amazonaws.com/dev/videos/{id}
-  POST - https://4zwdvrjvyk.execute-api.ap-south-1.amazonaws.com/dev/videos/upload
-functions:
-  videoProcessor: streamflow-dev-videoProcessor (50 MB)
-  getVideos: streamflow-dev-getVideos (50 MB)
-  getVideo: streamflow-dev-getVideo (50 MB)
-  getUploadUrl: streamflow-dev-getUploadUrl (50 MB)
-
-Ensuring ECS permissions are properly applied...
-
-Deploying "streamflow" to stage "dev" (ap-south-1)
-
-✔ Service deployed to stack streamflow-dev (88s)
-
-endpoints:
-  GET - https://4zwdvrjvyk.execute-api.ap-south-1.amazonaws.com/dev/videos
-  GET - https://4zwdvrjvyk.execute-api.ap-south-1.amazonaws.com/dev/videos/{id}
-  POST - https://4zwdvrjvyk.execute-api.ap-south-1.amazonaws.com/dev/videos/upload
+  GET - https://c6oi85flik.execute-api.ap-south-1.amazonaws.com/dev/videos
+  GET - https://c6oi85flik.execute-api.ap-south-1.amazonaws.com/dev/videos/{id}
+  POST - https://c6oi85flik.execute-api.ap-south-1.amazonaws.com/dev/videos/upload
 functions:
   videoProcessor: streamflow-dev-videoProcessor (50 MB)
   getVideos: streamflow-dev-getVideos (50 MB)
@@ -243,14 +228,12 @@ functions:
   getUploadUrl: streamflow-dev-getUploadUrl (50 MB)
 
 Getting API endpoint...
-Trying alternative parsing method...
-Trying AWS CLI method...
-✅ Found API endpoint: https://4zwdvrjvyk.execute-api.ap-south-1.amazonaws.com/dev
+✅ Found API endpoint: https://c6oi85flik.execute-api.ap-south-1.amazonaws.com/dev
 ✅ Updated frontend/.env with API endpoint
 Building React frontend with API endpoint...
 npm warn Unknown builtin config "globalignorefile". This will stop working in the next major version of npm.
 
-up to date, audited 281 packages in 2s
+up to date, audited 281 packages in 896ms
 
 39 packages are looking for funding
   run `npm fund` for details
@@ -271,27 +254,28 @@ npm warn Unknown builtin config "globalignorefile". This will stop working in th
 
 vite v4.5.14 building for production...
 ✓ 109 modules transformed.
-dist/index.html                   0.82 kB │ gzip:   0.39 kB
+dist/index.html                   0.86 kB │ gzip:   0.40 kB
 dist/assets/index-403a330c.css   22.17 kB │ gzip:   4.51 kB
-dist/assets/index-9b11e4c0.js   893.54 kB │ gzip: 269.92 kB
+dist/assets/index-0dc88e6c.js   894.31 kB │ gzip: 270.18 kB
 
 (!) Some chunks are larger than 500 kBs after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
-✓ built in 2.77s
+✓ built in 2.57s
 Uploading frontend...
+upload: frontend/dist/url-fix.js to s3://production.adarshsahu.site/url-fix.js
 upload: frontend/dist/index.html to s3://production.adarshsahu.site/index.html
 upload: frontend/dist/assets/index-403a330c.css to s3://production.adarshsahu.site/assets/index-403a330c.css
-upload: frontend/dist/assets/index-9b11e4c0.js to s3://production.adarshsahu.site/assets/index-9b11e4c0.js
-Creating bucket policy for public access...
+upload: frontend/dist/assets/index-0dc88e6c.js to s3://production.adarshsahu.site/assets/index-0dc88e6c.js
 Applying bucket policy...
-Configuring SQS policy for S3 notifications...
+Configuring SQS policy for S3 notificanotificationstions...
 Applying SQS policy to allow S3 notifications...
+Waiting for SQS policy to propagate...
 Configuring S3 bucket notifications...
 ==== Deployment Complete ====
 Frontend URL: http://production.adarshsahu.site.s3-website.ap-south-1.amazonaws.com
-API Endpoint: https://4zwdvrjvyk.execute-api.ap-south-1.amazonaws.com/dev
+API Endpoint: https://c6oi85flik.execute-api.ap-south-1.amazonaws.com/dev
 Verifying website accessibility...
 ✅ Website is accessible at: http://production.adarshsahu.site.s3-website.ap-south-1.amazonaws.com
 Verifying S3 notifications...
@@ -300,7 +284,7 @@ Verifying S3 notifications...
 ✅ DynamoDB table exists: VideoMetadata
 Verifying ECS resources...
 ✅ ECS cluster exists and is active: video-transcoder-cluster
-✅ ECS task definition exists: arn:aws:ecs:ap-south-1:534613823192:task-definition/video-transcoder:17
+✅ ECS task definition exists: arn:aws:ecs:ap-south-1:534613823192:task-definition/video-transcoder:24
 Verifying IAM roles...
 ✅ ECS execution role exists: ecsTaskExecutionRole
 ✅ ECS task role exists: ECSTask-VideoTranscoder-Role
